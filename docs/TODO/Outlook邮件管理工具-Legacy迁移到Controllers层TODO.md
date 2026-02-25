@@ -437,7 +437,7 @@
   - app.py: 移除 legacy 导入，使用 middleware 和 services/scheduler
   - controllers/settings.py: 使用 services/scheduler
   - web_outlook_app.py: 直接从各模块导出兼容函数
-- [x] 运行所有测���（95 个测试全部通过）
+- [x] 运行所有测试（95 个测试全部通过）
 - [x] 确认应用正常启动
 - [x] 提交 Git：`git commit -m "refactor: 移除 legacy 依赖，迁移调度器到 services"`
 

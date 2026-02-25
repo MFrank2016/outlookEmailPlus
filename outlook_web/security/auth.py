@@ -170,14 +170,65 @@ def login_required(f):
 
 
 def get_client_ip() -> str:
-    """获取客户端 IP（兼容反向代理）"""
+    """
+    获取客户端 IP（安全实现）
+
+    只有当请求来自受信任的代理时，才信任 X-Forwarded-For 头。
+    否则直接使用 remote_addr，防止 IP 伪造攻击。
+
+    受信任代理通过环境变量 TRUSTED_PROXIES 配置。
+    """
+    from outlook_web import config
+
     try:
-        client_ip = request.headers.get("X-Forwarded-For") or request.remote_addr
-        if client_ip:
-            client_ip = client_ip.split(",")[0].strip()
-        return client_ip or "unknown"
+        # 获取受信任代理列表
+        trusted_proxies = config.get_trusted_proxies()
+
+        # 检查直接连接方是否为受信任代理
+        remote_addr = request.remote_addr or ""
+        is_trusted_proxy = _ip_in_trusted_proxies(remote_addr, trusted_proxies)
+
+        if is_trusted_proxy and trusted_proxies:
+            # 请求来自受信任代理，可以信任 X-Forwarded-For
+            client_ip = request.headers.get("X-Forwarded-For") or remote_addr
+            if client_ip:
+                client_ip = client_ip.split(",")[0].strip()
+            return client_ip or "unknown"
+        else:
+            # 请求不��来自受信任代理，使用 remote_addr 防止伪造
+            return remote_addr or "unknown"
     except Exception:
         return "unknown"
+
+
+def _ip_in_trusted_proxies(ip: str, trusted_proxies: list[str]) -> bool:
+    """
+    检查 IP 是否在受信任代理列表中。
+
+    支持：
+    - 单个 IP：127.0.0.1
+    - CIDR 表示法：10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16
+    """
+    if not trusted_proxies or not ip:
+        return False
+
+    import ipaddress
+
+    for proxy in trusted_proxies:
+        try:
+            if "/" in proxy:
+                # CIDR 表示法
+                network = ipaddress.ip_network(proxy, strict=False)
+                if ipaddress.ip_address(ip) in network:
+                    return True
+            else:
+                # 单个 IP
+                if ip == proxy:
+                    return True
+        except ValueError:
+            # 无效的 IP 或 CIDR，跳过
+            continue
+    return False
 
 
 def get_user_agent() -> str:
@@ -206,8 +257,14 @@ def issue_export_verify_token(client_ip: str, user_agent: str) -> str:
     return verify_token
 
 
-def consume_export_verify_token(verify_token: str) -> tuple[bool, str]:
-    """校验并消费一次性导出验证 token（成功则删除）"""
+def consume_export_verify_token(verify_token: str, client_ip: str = "", user_agent: str = "") -> tuple[bool, str]:
+    """
+    校验并消费一次性导出验证 token（成功则删除）
+
+    安全增强：
+    - 验证 IP 绑定：token 生成时记录的 IP 必须与消费时一致
+    - 验证 User-Agent 绑定：增加 token 被盗用的难度
+    """
     if not verify_token:
         return False, "需要二次验证"
 
@@ -218,7 +275,7 @@ def consume_export_verify_token(verify_token: str) -> tuple[bool, str]:
         db.execute("BEGIN IMMEDIATE")
         row = db.execute(
             """
-            SELECT expires_at
+            SELECT expires_at, ip, user_agent
             FROM export_verify_tokens
             WHERE token = ?
             """,
@@ -234,6 +291,18 @@ def consume_export_verify_token(verify_token: str) -> tuple[bool, str]:
             db.execute("DELETE FROM export_verify_tokens WHERE token = ?", (verify_token,))
             db.commit()
             return False, "验证已过期，请重新验证"
+
+        # 验证 IP 绑定（如果生成时记录了 IP）
+        stored_ip = row["ip"] or ""
+        if stored_ip and client_ip and stored_ip != client_ip:
+            db.rollback()
+            return False, "验证失败：IP 不匹配"
+
+        # 验证 User-Agent 绑定（如果生成时记录了）
+        stored_ua = row["user_agent"] or ""
+        if stored_ua and user_agent and stored_ua != user_agent:
+            db.rollback()
+            return False, "验证失败：客户端不匹配"
 
         db.execute("DELETE FROM export_verify_tokens WHERE token = ?", (verify_token,))
         db.commit()

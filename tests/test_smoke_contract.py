@@ -1,6 +1,6 @@
 import unittest
 
-from tests._import_app import import_web_app_module
+from tests._import_app import import_web_app_module, clear_login_attempts
 
 
 class SmokeContractTests(unittest.TestCase):
@@ -8,6 +8,11 @@ class SmokeContractTests(unittest.TestCase):
     def setUpClass(cls):
         cls.module = import_web_app_module()
         cls.app = cls.module.app
+
+    def setUp(self):
+        # 每个测试前清理登录限制记录，避免测试间互相影响
+        with self.app.app_context():
+            clear_login_attempts()
 
     def _login(self, client):
         resp = client.post("/login", json={"password": "testpass123"})

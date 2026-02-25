@@ -3,7 +3,7 @@ import unittest
 import uuid
 from unittest.mock import patch
 
-from tests._import_app import import_web_app_module
+from tests._import_app import import_web_app_module, clear_login_attempts
 
 
 class ErrorAndTraceTests(unittest.TestCase):
@@ -11,6 +11,16 @@ class ErrorAndTraceTests(unittest.TestCase):
     def setUpClass(cls):
         cls.module = import_web_app_module()
         cls.app = cls.module.app
+
+    def setUp(self):
+        # 每个测试前清理登录限制记录，避免测试间互相影响
+        with self.app.app_context():
+            clear_login_attempts()
+
+    def _login(self, client, password: str = "testpass123"):
+        resp = client.post("/login", json={"password": password})
+        self.assertEqual(resp.status_code, 200)
+        return resp
 
     def test_healthz(self):
         client = self.app.test_client()
@@ -119,7 +129,7 @@ class ErrorAndTraceTests(unittest.TestCase):
                 json={"email": email_addr, "ids": ["m1", "m2"]},
             )
 
-        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.status_code, 502)
         data = resp.get_json()
         self.assertEqual(data.get("success"), False)
         self.assertIsInstance(data.get("error"), dict)
@@ -177,7 +187,7 @@ class ErrorAndTraceTests(unittest.TestCase):
             )
             imap_mock.assert_not_called()
 
-        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.status_code, 502)
         data = resp.get_json()
         self.assertEqual(data.get("success"), False)
         self.assertIsInstance(data.get("error"), dict)
@@ -193,9 +203,9 @@ class ErrorAndTraceTests(unittest.TestCase):
         self.assertEqual(login.status_code, 200)
         self.assertEqual(login.get_json().get("success"), True)
 
-        # 触发一个 legacy 的字符串错误（200 + {success:false, error:"..."})
+        # 触发一个 legacy 的字符串错误（现在应返回正确的 400 状态码）
         resp = client.get("/api/groups/999999")
-        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.status_code, 400)
         data = resp.get_json()
         self.assertEqual(data.get("success"), False)
         self.assertIsInstance(data.get("error"), dict)

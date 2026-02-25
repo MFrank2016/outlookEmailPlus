@@ -599,11 +599,14 @@ def api_search_accounts() -> Any:
 @login_required
 def api_export_all_accounts() -> Any:
     """导出所有邮箱账号为 TXT 文件（需要二次验证）"""
-    from outlook_web.security.auth import consume_export_verify_token
+    from outlook_web.security.auth import consume_export_verify_token, get_client_ip, get_user_agent
 
-    # 检查二次验证token（一次性）
-    verify_token = request.args.get('verify_token')
-    ok, error_message = consume_export_verify_token(verify_token)
+    # 从请求头获取二次验证 token（避免 URL 泄露）
+    verify_token = request.headers.get('X-Export-Token')
+    client_ip = get_client_ip()
+    user_agent = get_user_agent()
+
+    ok, error_message = consume_export_verify_token(verify_token, client_ip, user_agent)
     if not ok:
         return jsonify({'success': False, 'error': error_message, 'need_verify': True}), 401
 
@@ -641,13 +644,15 @@ def api_export_all_accounts() -> Any:
 @login_required
 def api_export_selected_accounts() -> Any:
     """导出选中分组的邮箱账号为 TXT 文件（需要二次验证）"""
-    from outlook_web.security.auth import consume_export_verify_token
+    from outlook_web.security.auth import consume_export_verify_token, get_client_ip, get_user_agent
 
     data = request.json
     group_ids = data.get('group_ids', [])
     verify_token = data.get('verify_token')
+    client_ip = get_client_ip()
+    user_agent = get_user_agent()
 
-    ok, error_message = consume_export_verify_token(verify_token)
+    ok, error_message = consume_export_verify_token(verify_token, client_ip, user_agent)
     if not ok:
         return jsonify({'success': False, 'error': error_message, 'need_verify': True}), 401
 
@@ -690,7 +695,7 @@ def api_export_selected_accounts() -> Any:
 
 @login_required
 def api_generate_export_verify_token() -> Any:
-    """���成导出验证token（二次验证）"""
+    """生成导出验证token（二次验证）"""
     from outlook_web.security.auth import issue_export_verify_token, get_client_ip, get_user_agent
     from outlook_web.repositories import settings as settings_repo
     from outlook_web.security.crypto import verify_password

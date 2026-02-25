@@ -4,7 +4,7 @@
 Outlook 邮件 Web 应用（兼容入口）
 
 目标：
-- 保���部署入口兼容：`web_outlook_app:app`
+- 保持部署入口兼容：`web_outlook_app:app`
 - 内部实现已迁移到 `outlook_web/` 模块化架构
 
 关联文档：

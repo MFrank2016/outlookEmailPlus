@@ -67,6 +67,13 @@ def attach_trace_id_and_normalize_errors(response):
             if not error_obj.get('message'):
                 error_obj['message'] = '请求失败'
                 mutated = True
+
+            # 如果 error 中有 status 字段，且当前 HTTP 状态码是 200，则修正为正确的状态码
+            error_status = error_obj.get('status')
+            if error_status and isinstance(error_status, int) and response.status_code == 200:
+                response.status_code = error_status
+                mutated = True
+
             if mutated:
                 new_data = dict(data)
                 new_data['error'] = error_obj
@@ -87,6 +94,9 @@ def attach_trace_id_and_normalize_errors(response):
             )
             new_data = dict(data)
             new_data['error'] = error_payload
+            # legacy 错误默认使用 400 状态码（如果当前是 200）
+            if response.status_code == 200:
+                response.status_code = 400
             response.set_data(json.dumps(new_data, ensure_ascii=False))
             return response
     except Exception:

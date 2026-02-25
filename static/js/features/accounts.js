@@ -450,13 +450,15 @@
 
                 const verifyToken = verifyData.verify_token;
 
-                // 执行导出
+                // 执行导出（使用请求头传递 token，避免 URL/日志泄露）
                 const response = await fetch('/api/accounts/export-selected', {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-Export-Token': verifyToken
+                    },
                     body: JSON.stringify({
-                        group_ids: pendingExportGroupIds,
-                        verify_token: verifyToken
+                        group_ids: pendingExportGroupIds
                     })
                 });
 

@@ -3,7 +3,7 @@ import unittest
 import uuid
 from unittest.mock import patch
 
-from tests._import_app import import_web_app_module
+from tests._import_app import import_web_app_module, clear_login_attempts
 
 
 class CoreFeatureTests(unittest.TestCase):
@@ -14,6 +14,11 @@ class CoreFeatureTests(unittest.TestCase):
         # 导入 graph_service 用于 mock
         from outlook_web.services import graph as graph_service
         cls.graph_service = graph_service
+
+    def setUp(self):
+        # 每个测试前清理登录限制记录，避免测试间互相影响
+        with self.app.app_context():
+            clear_login_attempts()
 
     def _login(self, client, password: str = "testpass123"):
         resp = client.post("/login", json={"password": password})
@@ -73,9 +78,9 @@ class CoreFeatureTests(unittest.TestCase):
         self.assertEqual(delete.status_code, 200)
         self.assertEqual(delete.get_json().get("success"), True)
 
-        # 删除后再次获取：应返回错误（legacy 会被归一化为结构化错误）
+        # 删除后再次获取：应返回错误（legacy 会被归一化为结构化错误，HTTP 状态码为 400）
         get_after = client.get(f"/api/groups/{group_id}")
-        self.assertEqual(get_after.status_code, 200)
+        self.assertEqual(get_after.status_code, 400)
         data = get_after.get_json()
         self.assertEqual(data.get("success"), False)
         self.assertIsInstance(data.get("error"), dict)
@@ -96,7 +101,7 @@ class CoreFeatureTests(unittest.TestCase):
         self.assertIsInstance(tag_id, int)
 
         dup = client.post("/api/tags", json={"name": tag_name, "color": "#000000"})
-        self.assertEqual(dup.status_code, 200)
+        self.assertEqual(dup.status_code, 400)
         dup_data = dup.get_json()
         self.assertEqual(dup_data.get("success"), False)
         self.assertIsInstance(dup_data.get("error"), dict)
@@ -141,7 +146,8 @@ class CoreFeatureTests(unittest.TestCase):
         verify_token = verify_data.get("verify_token")
         self.assertTrue(verify_token)
 
-        export = client.get(f"/api/accounts/export?verify_token={verify_token}")
+        # 使用请求头传递 token（避免 URL/日志泄露）
+        export = client.get("/api/accounts/export", headers={"X-Export-Token": verify_token})
         self.assertEqual(export.status_code, 200)
         self.assertIn("text/plain", export.headers.get("Content-Type", ""))
         body = export.get_data(as_text=True)

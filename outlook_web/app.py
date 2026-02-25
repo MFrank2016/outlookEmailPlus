@@ -74,7 +74,10 @@ def create_app(*, autostart_scheduler: Optional[bool] = None):
         app.config["SESSION_COOKIE_HTTPONLY"] = True
         app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
 
-        app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_prefix=1)
+        # ProxyFix 中间件（仅在配置启用时应用）
+        # 注意：启用前必须配置 TRUSTED_PROXIES 环境变量
+        if config.get_proxy_fix_enabled():
+            app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_prefix=1)
 
         # DB teardown（请求结束释放连接）
         register_db(app)

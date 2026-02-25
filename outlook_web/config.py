@@ -56,3 +56,31 @@ def env_true(key: str, default: bool) -> bool:
 def get_scheduler_autostart_default() -> bool:
     return env_true("SCHEDULER_AUTOSTART", True)
 
+
+def get_trusted_proxies() -> list[str]:
+    """
+    获取受信任的代理 IP 列表。
+    用于验证 X-Forwarded-For 头的来源是否可信。
+
+    环境变量 TRUSTED_PROXIES 格式：逗号分隔的 CIDR 或 IP，如：
+    - "10.0.0.0/8,172.16.0.0/12,192.168.0.0/16" (内网代理)
+    - "127.0.0.1" (本地代理)
+    - "" (空表示不信任任何代理，直接使用 remote_addr)
+
+    默认值：空字符串（安全默认 - 不信任任何代理）
+    """
+    proxies_str = _getenv("TRUSTED_PROXIES", "")
+    if not proxies_str:
+        return []
+    return [p.strip() for p in proxies_str.split(",") if p.strip()]
+
+
+def get_proxy_fix_enabled() -> bool:
+    """
+    是否启用 ProxyFix 中间件。
+
+    只有在应用部署在反向代理后面，并且配置了 TRUSTED_PROXIES 时才应启用。
+    默认：False（安全默认）
+    """
+    return env_true("PROXY_FIX_ENABLED", False)
+

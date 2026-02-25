@@ -73,8 +73,15 @@ def build_error_payload(
         "trace_id": trace_id_value,
     }
 
+    # 根据状态码选择日志级别：
+    # - 5xx: ERROR（服务端错误）
+    # - 4xx: WARNING（客户端错误，如验证失败、权限不足等，属于正常业务流程）
+    # - 其他: INFO
+    log_level = logging.ERROR if status >= 500 else (logging.WARNING if status >= 400 else logging.INFO)
+
     try:
-        current_app.logger.error(
+        current_app.logger.log(
+            log_level,
             "trace_id=%s code=%s status=%s type=%s details=%s",
             trace_id_value,
             code,
@@ -84,7 +91,8 @@ def build_error_payload(
         )
     except Exception:
         try:
-            _FALLBACK_LOGGER.error(
+            _FALLBACK_LOGGER.log(
+                log_level,
                 "trace_id=%s code=%s status=%s type=%s details=%s",
                 trace_id_value,
                 code,

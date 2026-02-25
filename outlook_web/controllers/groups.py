@@ -14,6 +14,8 @@ from outlook_web.repositories import groups as groups_repo
 from outlook_web.repositories import temp_emails as temp_emails_repo
 from outlook_web.security.auth import (
     consume_export_verify_token,
+    get_client_ip,
+    get_user_agent,
     login_required,
 )
 from outlook_web.audit import log_audit
@@ -181,9 +183,12 @@ def api_delete_group(group_id: int) -> Any:
 @login_required
 def api_export_group(group_id: int) -> Any:
     """导出分组下的所有邮箱账号为 TXT 文件（需要二次验证）"""
-    # 检查二次验证token（一次性）
-    verify_token = request.args.get('verify_token')
-    ok, error_message = consume_export_verify_token(verify_token)
+    # 从请求头获取二次验证 token（避免 URL 泄露）
+    verify_token = request.headers.get('X-Export-Token')
+    client_ip = get_client_ip()
+    user_agent = get_user_agent()
+
+    ok, error_message = consume_export_verify_token(verify_token, client_ip, user_agent)
     if not ok:
         return jsonify({'success': False, 'error': error_message, 'need_verify': True}), 401
 

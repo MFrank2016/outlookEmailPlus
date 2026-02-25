@@ -10,7 +10,7 @@ _DB_PATH = Path(_TEMP_DIR.name) / "test.db"
 
 def import_web_app_module():
     """
-    以“可测试”的方式导入 web_outlook_app：
+    以"可测试"的方式导入 web_outlook_app：
     - 注入必要环境变量（SECRET_KEY / DATABASE_PATH 等）
     - 禁用调度器自启动，避免测试期间启动后台线程
     - 将 DB 指向临时文件，避免污染本地 data/
@@ -32,4 +32,15 @@ def import_web_app_module():
         WTF_CSRF_CHECK_DEFAULT=False,
     )
     return module
+
+
+def clear_login_attempts():
+    """清理登录限制记录，避免测试间互相影响"""
+    from outlook_web.db import get_db
+    try:
+        db = get_db()
+        db.execute("DELETE FROM login_attempts")
+        db.commit()
+    except Exception:
+        pass
 
