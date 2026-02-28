@@ -1,5 +1,21 @@
 # DEVLOG（发布记录）
 
+## v1.1.1（2026-02-28）
+
+### 新增功能
+- GitHub Actions Docker 构建工作流支持推送到 Docker Hub（`guangshanshui/outlook-email-plus`），并在未配置凭据时自动跳过，避免 fork/缺失 secrets 场景构建失败。
+
+### 修复
+- README 同步更新镜像地址与仓库链接，避免用户拉取/访问到旧地址（GHCR/旧仓库）。
+
+### 重要变更
+- 容器镜像发布从 GitHub Container Registry（GHCR）切换为 Docker Hub；需要在仓库 Secrets 中配置 `DOCKERHUB_USERNAME` 与 `DOCKERHUB_TOKEN` 才会执行推送。
+
+### 测试/验证
+- `npm test`：布局系统 Jest 用例回归。
+- `python -m unittest discover -s tests -v`：全量 Python 单测回归。
+- `docker build .`：本地镜像构建通过（用于验证 Dockerfile 未回归）。
+
 ## v1.1.0（2026-02-27）
 
 ### 新增功能
