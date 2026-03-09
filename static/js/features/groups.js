@@ -264,7 +264,10 @@
                                onclick="event.stopPropagation(); updateBatchActionBar(); updateSelectAllCheckbox()">
                         <div class="account-avatar" style="background: linear-gradient(135deg, ${gradient[0]}, ${gradient[1]})">${initial}</div>
                         <div class="account-info">
-                            <div class="account-email" title="${escapeHtml(acc.email)}" ${isFailed ? 'style="color:var(--clr-danger);"' : ''}>
+                            <div class="account-email"
+                                 onclick="event.stopPropagation(); copyEmail('${escapeJs(acc.email)}')"
+                                 title="点击复制 ${escapeHtml(acc.email)}"
+                                 style="${isFailed ? 'color:var(--clr-danger);' : ''}cursor:pointer;">
                                 ${escapeHtml(acc.email)}
                             </div>
                             ${acc.remark && acc.remark.trim() ? `<div style="font-size:0.72rem;color:var(--text-muted);margin-top:2px;">📝 ${escapeHtml(acc.remark)}</div>` : ''}

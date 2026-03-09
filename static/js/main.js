@@ -139,9 +139,7 @@
 
         function logout() {
             if (!confirm('确认退出登录？')) return;
-            fetch('/logout', { method: 'POST' })
-                .then(() => window.location.href = '/login')
-                .catch(() => window.location.href = '/login');
+            window.location.href = '/logout';
         }
 
         // ==================== Dashboard ====================
@@ -204,10 +202,10 @@
                 const refreshListEl = document.getElementById('dashboardRefreshList');
                 if (refreshListEl) {
                     try {
-                        const refreshRes = await fetch('/api/accounts/refresh-status');
+                        const refreshRes = await fetch('/api/accounts/refresh-stats');
                         const refreshData = await refreshRes.json();
-                        if (refreshData.success && refreshData.refresh_status) {
-                            const rs = refreshData.refresh_status;
+                        if (refreshData.success && refreshData.stats) {
+                            const rs = refreshData.stats;
                             refreshListEl.innerHTML = `
                                 <li><span>上次刷新时间</span><span class="badge badge-gray">${rs.last_refresh_time || '暂无'}</span></li>
                                 <li><span>成功账号数</span><span class="badge" style="background:var(--clr-jade);color:white;">${rs.success_count}</span></li>
@@ -1379,7 +1377,7 @@ ${details}
                 const body = count === 1 ? subject : `${subject} 等 ${count} 封新邮件`;
                 new Notification(title, {
                     body: body,
-                    icon: '/static/favicon.ico'
+                    icon: '/img/ico.png'
                 });
             } else if ('Notification' in window && Notification.permission !== 'denied') {
                 Notification.requestPermission();

@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 
-from flask import g, jsonify, redirect, render_template, request, session, url_for
+from flask import g, jsonify, redirect, render_template, request, send_from_directory, session, url_for
 
 from outlook_web.errors import build_error_payload
 from outlook_web.repositories import settings as settings_repo
@@ -104,6 +105,18 @@ def logout() -> Any:
     """退出登录"""
     session.pop("logged_in", None)
     return redirect(url_for("pages.login"))
+
+
+def image_asset(filename: str) -> Any:
+    """提供仓库 img/ 目录中的静态图片资源。"""
+    img_dir = Path(__file__).resolve().parents[2] / "img"
+    return send_from_directory(str(img_dir), filename)
+
+
+def favicon() -> Any:
+    """站点 favicon，复用 img/ico.png。"""
+    img_dir = Path(__file__).resolve().parents[2] / "img"
+    return send_from_directory(str(img_dir), "ico.png", mimetype="image/png")
 
 
 @login_required

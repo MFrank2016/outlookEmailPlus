@@ -753,19 +753,39 @@
         }
 
         // 复制邮箱地址
-        function copyEmail(email) {
-            navigator.clipboard.writeText(email).then(() => {
-                showToast('邮箱地址已复制', 'success');
-            }).catch(() => {
-                // 降级方案
+        async function copyEmail(email) {
+            try {
+                if (navigator.clipboard && navigator.clipboard.writeText && window.isSecureContext) {
+                    await navigator.clipboard.writeText(email);
+                    showToast('邮箱地址已复制', 'success');
+                    return true;
+                }
+
                 const textarea = document.createElement('textarea');
                 textarea.value = email;
+                textarea.setAttribute('readonly', 'readonly');
+                textarea.style.position = 'fixed';
+                textarea.style.top = '-9999px';
+                textarea.style.left = '-9999px';
+
                 document.body.appendChild(textarea);
+                textarea.focus();
                 textarea.select();
-                document.execCommand('copy');
+
+                const copied = document.execCommand('copy');
                 document.body.removeChild(textarea);
+
+                if (!copied) {
+                    throw new Error('document.execCommand(copy) returned false');
+                }
+
                 showToast('邮箱地址已复制', 'success');
-            });
+                return true;
+            } catch (error) {
+                console.error('复制邮箱地址失败:', error);
+                showToast('复制失败，请手动复制', 'error');
+                return false;
+            }
         }
 
         // 复制当前邮箱
@@ -780,9 +800,7 @@
         // 退出登录
         function logout() {
             if (confirm('确定要退出登录吗？')) {
-                fetch('/logout', { method: 'POST' })
-                    .then(() => { window.location.href = '/login'; })
-                    .catch(() => { window.location.href = '/logout'; });
+                window.location.href = '/logout';
             }
         }
 
