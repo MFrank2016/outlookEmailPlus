@@ -125,3 +125,27 @@ def get_external_api_disable_raw_content() -> bool:
 
 def get_pool_external_enabled() -> bool:
     return get_setting("pool_external_enabled", "false").lower() == "true"
+
+
+def get_external_api_disable_pool_claim_random() -> bool:
+    return (
+        get_setting("external_api_disable_pool_claim_random", "false").lower() == "true"
+    )
+
+
+def get_external_api_disable_pool_claim_release() -> bool:
+    return (
+        get_setting("external_api_disable_pool_claim_release", "false").lower()
+        == "true"
+    )
+
+
+def get_external_api_disable_pool_claim_complete() -> bool:
+    return (
+        get_setting("external_api_disable_pool_claim_complete", "false").lower()
+        == "true"
+    )
+
+
+def get_external_api_disable_pool_stats() -> bool:
+    return get_setting("external_api_disable_pool_stats", "false").lower() == "true"

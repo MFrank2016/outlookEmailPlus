@@ -6,6 +6,7 @@ from flask import jsonify, request
 
 from outlook_web.repositories import settings as settings_repo
 from outlook_web.security.auth import api_key_required
+from outlook_web.security.auth import get_external_api_consumer
 from outlook_web.security.external_api_guard import external_api_guards
 from outlook_web.services import external_api as external_api_service
 from outlook_web.services.pool import (
@@ -59,13 +60,41 @@ def _check_pool_external_enabled(endpoint: str):
     )
 
 
+def _check_pool_access(endpoint: str):
+    consumer = get_external_api_consumer() or {}
+    if bool(consumer.get("is_legacy")) or bool(consumer.get("pool_access")):
+        return None
+    _audit(
+        endpoint,
+        "error",
+        details={
+            "code": "FORBIDDEN",
+            "feature": "external_pool",
+            "reason": "pool_access_required",
+        },
+    )
+    return (
+        jsonify(
+            external_api_service.fail(
+                "FORBIDDEN",
+                "当前 API Key 无权访问 external pool",
+                data={"feature": "external_pool", "reason": "pool_access_required"},
+            )
+        ),
+        403,
+    )
+
+
 @api_key_required
-@external_api_guards()
+@external_api_guards(feature="pool_claim_random")
 def api_external_pool_claim_random():
     endpoint = "/api/external/pool/claim-random"
     disabled_resp = _check_pool_external_enabled(endpoint)
     if disabled_resp is not None:
         return disabled_resp
+    access_resp = _check_pool_access(endpoint)
+    if access_resp is not None:
+        return access_resp
     body = request.get_json(silent=True) or {}
     caller_id = body.get("caller_id", "")
     task_id = body.get("task_id", "")
@@ -101,12 +130,15 @@ def api_external_pool_claim_random():
 
 
 @api_key_required
-@external_api_guards()
+@external_api_guards(feature="pool_claim_release")
 def api_external_pool_claim_release():
     endpoint = "/api/external/pool/claim-release"
     disabled_resp = _check_pool_external_enabled(endpoint)
     if disabled_resp is not None:
         return disabled_resp
+    access_resp = _check_pool_access(endpoint)
+    if access_resp is not None:
+        return access_resp
     body = request.get_json(silent=True) or {}
     account_id = body.get("account_id")
     claim_token = body.get("claim_token", "")
@@ -153,12 +185,15 @@ def api_external_pool_claim_release():
 
 
 @api_key_required
-@external_api_guards()
+@external_api_guards(feature="pool_claim_complete")
 def api_external_pool_claim_complete():
     endpoint = "/api/external/pool/claim-complete"
     disabled_resp = _check_pool_external_enabled(endpoint)
     if disabled_resp is not None:
         return disabled_resp
+    access_resp = _check_pool_access(endpoint)
+    if access_resp is not None:
+        return access_resp
     body = request.get_json(silent=True) or {}
     account_id = body.get("account_id")
     claim_token = body.get("claim_token", "")
@@ -215,12 +250,15 @@ def api_external_pool_claim_complete():
 
 
 @api_key_required
-@external_api_guards()
+@external_api_guards(feature="pool_stats")
 def api_external_pool_stats():
     endpoint = "/api/external/pool/stats"
     disabled_resp = _check_pool_external_enabled(endpoint)
     if disabled_resp is not None:
         return disabled_resp
+    access_resp = _check_pool_access(endpoint)
+    if access_resp is not None:
+        return access_resp
     try:
         stats = get_pool_stats()
         _audit(endpoint, "ok", details={"snapshot": True})

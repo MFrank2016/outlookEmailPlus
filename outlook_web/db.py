@@ -25,7 +25,8 @@ from outlook_web.security.crypto import (
 # v9：PRD-00008 P2 — 多 API Key 表
 # v10：PRD-00008 P2 — 调用方日级使用统计表
 # v11：PRD-00009 MT-1 — 邮箱池字段（pool_status/claimed_by/...）+ account_claim_logs 表 + pool settings
-DB_SCHEMA_VERSION = 11
+# v12：PRD-00009 P2 — external_api_keys 新增 pool_access 布尔权限
+DB_SCHEMA_VERSION = 12
 DB_SCHEMA_VERSION_KEY = "db_schema_version"
 DB_SCHEMA_LAST_UPGRADE_TRACE_ID_KEY = "db_schema_last_upgrade_trace_id"
 DB_SCHEMA_LAST_UPGRADE_ERROR_KEY = "db_schema_last_upgrade_error"
@@ -621,12 +622,19 @@ def init_db(database_path: Optional[str] = None):
                 name TEXT NOT NULL,
                 api_key_encrypted TEXT NOT NULL,
                 allowed_emails_json TEXT NOT NULL DEFAULT '[]',
+                pool_access INTEGER NOT NULL DEFAULT 0,
                 enabled INTEGER NOT NULL DEFAULT 1,
                 last_used_at TIMESTAMP,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
             """)
+        cursor.execute("PRAGMA table_info(external_api_keys)")
+        external_api_keys_columns = [col[1] for col in cursor.fetchall()]
+        if "pool_access" not in external_api_keys_columns:
+            cursor.execute(
+                "ALTER TABLE external_api_keys ADD COLUMN pool_access INTEGER NOT NULL DEFAULT 0"
+            )
         cursor.execute("""
             CREATE INDEX IF NOT EXISTS idx_external_api_keys_enabled
             ON external_api_keys(enabled, updated_at)

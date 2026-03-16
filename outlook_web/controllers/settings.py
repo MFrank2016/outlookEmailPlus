@@ -148,6 +148,18 @@ def api_get_settings() -> Any:
     safe_settings["external_api_disable_wait_message"] = (
         settings_repo.get_external_api_disable_wait_message()
     )
+    safe_settings["external_api_disable_pool_claim_random"] = (
+        settings_repo.get_external_api_disable_pool_claim_random()
+    )
+    safe_settings["external_api_disable_pool_claim_release"] = (
+        settings_repo.get_external_api_disable_pool_claim_release()
+    )
+    safe_settings["external_api_disable_pool_claim_complete"] = (
+        settings_repo.get_external_api_disable_pool_claim_complete()
+    )
+    safe_settings["external_api_disable_pool_stats"] = (
+        settings_repo.get_external_api_disable_pool_stats()
+    )
     safe_settings["pool_external_enabled"] = settings_repo.get_pool_external_enabled()
 
     # Telegram 推送配置
@@ -323,6 +335,9 @@ def api_update_settings() -> Any:
                         "name": name,
                         "api_key": api_key_value,
                         "allowed_emails": allowed_emails,
+                        "pool_access": _parse_bool_input(
+                            item.get("pool_access"), default=False
+                        ),
                         "enabled": _parse_bool_input(item.get("enabled"), default=True),
                     }
                 )
@@ -395,6 +410,38 @@ def api_update_settings() -> Any:
             updated.append("external pool 总开关")
         else:
             errors.append("external pool 总开关必须是 true 或 false")
+
+    if "external_api_disable_pool_claim_random" in data:
+        val = str(data["external_api_disable_pool_claim_random"]).lower()
+        if val in ("true", "false"):
+            queue_setting_update("external_api_disable_pool_claim_random", val)
+            updated.append("对外 API 禁用 pool claim-random")
+        else:
+            errors.append("禁用 pool claim-random 必须是 true 或 false")
+
+    if "external_api_disable_pool_claim_release" in data:
+        val = str(data["external_api_disable_pool_claim_release"]).lower()
+        if val in ("true", "false"):
+            queue_setting_update("external_api_disable_pool_claim_release", val)
+            updated.append("对外 API 禁用 pool claim-release")
+        else:
+            errors.append("禁用 pool claim-release 必须是 true 或 false")
+
+    if "external_api_disable_pool_claim_complete" in data:
+        val = str(data["external_api_disable_pool_claim_complete"]).lower()
+        if val in ("true", "false"):
+            queue_setting_update("external_api_disable_pool_claim_complete", val)
+            updated.append("对外 API 禁用 pool claim-complete")
+        else:
+            errors.append("禁用 pool claim-complete 必须是 true 或 false")
+
+    if "external_api_disable_pool_stats" in data:
+        val = str(data["external_api_disable_pool_stats"]).lower()
+        if val in ("true", "false"):
+            queue_setting_update("external_api_disable_pool_stats", val)
+            updated.append("对外 API 禁用 pool stats")
+        else:
+            errors.append("禁用 pool stats 必须是 true 或 false")
 
     # 更新刷新周期
     if "refresh_interval_days" in data:

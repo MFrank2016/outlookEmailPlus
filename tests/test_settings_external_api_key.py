@@ -21,6 +21,14 @@ class ExternalApiKeySettingsTests(unittest.TestCase):
             db.commit()
             settings_repo.set_setting("external_api_key", "")
             settings_repo.set_setting("pool_external_enabled", "false")
+            settings_repo.set_setting("external_api_disable_pool_claim_random", "false")
+            settings_repo.set_setting(
+                "external_api_disable_pool_claim_release", "false"
+            )
+            settings_repo.set_setting(
+                "external_api_disable_pool_claim_complete", "false"
+            )
+            settings_repo.set_setting("external_api_disable_pool_stats", "false")
 
     def _login(self, client, password: str = "testpass123"):
         resp = client.post("/login", json={"password": password})
@@ -107,6 +115,7 @@ class ExternalApiKeySettingsTests(unittest.TestCase):
                 name="partner-a",
                 api_key="multi-key-123",
                 allowed_emails=["user1@example.com"],
+                pool_access=True,
                 enabled=True,
             )
 
@@ -123,6 +132,7 @@ class ExternalApiKeySettingsTests(unittest.TestCase):
             settings.get("external_api_keys", [])[0]["allowed_emails"],
             ["user1@example.com"],
         )
+        self.assertTrue(settings.get("external_api_keys", [])[0]["pool_access"])
 
     def test_put_settings_can_replace_external_api_keys(self):
         client = self.app.test_client()
@@ -136,12 +146,14 @@ class ExternalApiKeySettingsTests(unittest.TestCase):
                         "name": "partner-a",
                         "api_key": "multi-key-123",
                         "allowed_emails": ["user1@example.com"],
+                        "pool_access": True,
                         "enabled": True,
                     },
                     {
                         "name": "partner-b",
                         "api_key": "multi-key-456",
                         "allowed_emails": [],
+                        "pool_access": False,
                         "enabled": False,
                     },
                 ]
@@ -157,8 +169,10 @@ class ExternalApiKeySettingsTests(unittest.TestCase):
         keys = settings.get("external_api_keys", [])
         self.assertEqual(keys[0]["name"], "partner-a")
         self.assertTrue(keys[0]["enabled"])
+        self.assertTrue(keys[0]["pool_access"])
         self.assertEqual(keys[1]["name"], "partner-b")
         self.assertFalse(keys[1]["enabled"])
+        self.assertFalse(keys[1]["pool_access"])
 
     def test_put_settings_rolls_back_external_api_keys_when_other_field_invalid(self):
         client = self.app.test_client()
@@ -199,6 +213,7 @@ class ExternalApiKeySettingsTests(unittest.TestCase):
                         "name": "partner-a",
                         "api_key": "multi-key-123",
                         "allowed_emails": [],
+                        "pool_access": True,
                         "enabled": "false",
                     }
                 ]
@@ -240,6 +255,42 @@ class ExternalApiKeySettingsTests(unittest.TestCase):
         self.assertEqual(resp2.status_code, 200)
         settings = resp2.get_json().get("settings", {})
         self.assertTrue(settings.get("pool_external_enabled"))
+
+    def test_get_settings_exposes_pool_feature_disable_flags(self):
+        with self.app.app_context():
+            from outlook_web.repositories import settings as settings_repo
+
+            settings_repo.set_setting("external_api_disable_pool_claim_random", "true")
+            settings_repo.set_setting("external_api_disable_pool_stats", "true")
+
+        client = self.app.test_client()
+        self._login(client)
+        resp = client.get("/api/settings")
+
+        self.assertEqual(resp.status_code, 200)
+        settings = resp.get_json().get("settings", {})
+        self.assertTrue(settings.get("external_api_disable_pool_claim_random"))
+        self.assertTrue(settings.get("external_api_disable_pool_stats"))
+
+    def test_put_settings_can_update_pool_feature_disable_flags(self):
+        client = self.app.test_client()
+        self._login(client)
+
+        resp = client.put(
+            "/api/settings",
+            json={
+                "external_api_disable_pool_claim_random": True,
+                "external_api_disable_pool_stats": True,
+            },
+        )
+
+        self.assertEqual(resp.status_code, 200)
+        self.assertTrue(resp.get_json().get("success"))
+
+        resp2 = client.get("/api/settings")
+        settings = resp2.get_json().get("settings", {})
+        self.assertTrue(settings.get("external_api_disable_pool_claim_random"))
+        self.assertTrue(settings.get("external_api_disable_pool_stats"))
 
 
 if __name__ == "__main__":

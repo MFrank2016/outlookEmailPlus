@@ -92,7 +92,7 @@ def check_ip_whitelist() -> Optional[Any]:
 def check_feature_enabled(feature: str) -> Optional[Any]:
     """
     检查功能是否被禁用。仅在公网模式开启时生效。
-    feature: 'wait_message' | 'raw_content'
+    feature: 'wait_message' | 'raw_content' | 'pool_claim_random' | 'pool_claim_release' | 'pool_claim_complete' | 'pool_stats'
     返回 None 表示通过，返回 Response 表示拒绝。
     """
     if not settings_repo.get_external_api_public_mode():
@@ -102,6 +102,14 @@ def check_feature_enabled(feature: str) -> Optional[Any]:
         disabled = settings_repo.get_external_api_disable_wait_message()
     elif feature == "raw_content":
         disabled = settings_repo.get_external_api_disable_raw_content()
+    elif feature == "pool_claim_random":
+        disabled = settings_repo.get_external_api_disable_pool_claim_random()
+    elif feature == "pool_claim_release":
+        disabled = settings_repo.get_external_api_disable_pool_claim_release()
+    elif feature == "pool_claim_complete":
+        disabled = settings_repo.get_external_api_disable_pool_claim_complete()
+    elif feature == "pool_stats":
+        disabled = settings_repo.get_external_api_disable_pool_stats()
     if not disabled:
         return None
     return (

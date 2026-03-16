@@ -163,7 +163,9 @@ def login_required(f):
                     trace_id=trace_id_value,
                 )
                 return (
-                    jsonify({"success": False, "error": error_payload, "need_login": True}),
+                    jsonify(
+                        {"success": False, "error": error_payload, "need_login": True}
+                    ),
                     401,
                 )
             return redirect(url_for("pages.login"))
@@ -203,10 +205,20 @@ def api_key_required(f):
                 401,
             )
 
-        matched_consumer = external_api_keys_repo.find_external_api_key_by_plaintext(provided_key)
+        matched_consumer = external_api_keys_repo.find_external_api_key_by_plaintext(
+            provided_key
+        )
         configured_key = settings_repo.get_external_api_key()
-        any_enabled_multi_key_configured = external_api_keys_repo.has_any_external_api_key_configured(enabled_only=True)
-        if not matched_consumer and not configured_key and not any_enabled_multi_key_configured:
+        any_enabled_multi_key_configured = (
+            external_api_keys_repo.has_any_external_api_key_configured(
+                enabled_only=True
+            )
+        )
+        if (
+            not matched_consumer
+            and not configured_key
+            and not any_enabled_multi_key_configured
+        ):
             return (
                 jsonify(
                     {
@@ -220,19 +232,25 @@ def api_key_required(f):
             )
 
         if matched_consumer:
-            external_api_keys_repo.mark_external_api_key_used(int(matched_consumer["id"]))
+            external_api_keys_repo.mark_external_api_key_used(
+                int(matched_consumer["id"])
+            )
             g.external_api_consumer = {
                 "id": matched_consumer["id"],
-                "consumer_key": matched_consumer.get("consumer_key") or f'key:{matched_consumer["id"]}',
-                "name": matched_consumer.get("name") or f'key-{matched_consumer["id"]}',
+                "consumer_key": matched_consumer.get("consumer_key")
+                or f"key:{matched_consumer['id']}",
+                "name": matched_consumer.get("name") or f"key-{matched_consumer['id']}",
                 "source": "external_api_keys",
                 "allowed_emails": matched_consumer.get("allowed_emails") or [],
+                "pool_access": bool(matched_consumer.get("pool_access", False)),
                 "enabled": bool(matched_consumer.get("enabled", True)),
                 "is_legacy": False,
             }
             return f(*args, **kwargs)
 
-        if not configured_key or not secrets.compare_digest(str(provided_key), str(configured_key)):
+        if not configured_key or not secrets.compare_digest(
+            str(provided_key), str(configured_key)
+        ):
             return (
                 jsonify(
                     {
@@ -251,6 +269,7 @@ def api_key_required(f):
             "name": "legacy-external-api-key",
             "source": "settings.external_api_key",
             "allowed_emails": [],
+            "pool_access": True,
             "enabled": True,
             "is_legacy": True,
         }
@@ -354,7 +373,9 @@ def issue_export_verify_token(client_ip: str, user_agent: str) -> str:
     return verify_token
 
 
-def consume_export_verify_token(verify_token: str, client_ip: str = "", user_agent: str = "") -> tuple[bool, str]:
+def consume_export_verify_token(
+    verify_token: str, client_ip: str = "", user_agent: str = ""
+) -> tuple[bool, str]:
     """
     校验并消费一次性导出验证 token（成功则删除）
 
@@ -385,7 +406,9 @@ def consume_export_verify_token(verify_token: str, client_ip: str = "", user_age
 
         expires_at = row["expires_at"] or 0
         if float(expires_at) < now_ts:
-            db.execute("DELETE FROM export_verify_tokens WHERE token = ?", (verify_token,))
+            db.execute(
+                "DELETE FROM export_verify_tokens WHERE token = ?", (verify_token,)
+            )
             db.commit()
             return False, "验证已过期，请重新验证"
 

@@ -26,8 +26,17 @@ class ExternalPoolApiTests(unittest.TestCase):
             db.execute("DELETE FROM accounts WHERE email LIKE '%@extpool.test'")
             db.commit()
             settings_repo.set_setting("external_api_key", "")
-            settings_repo.set_setting("external_api_public_mode", "0")
+            settings_repo.set_setting("external_api_public_mode", "false")
             settings_repo.set_setting("pool_external_enabled", "false")
+            settings_repo.set_setting("external_api_ip_whitelist", "[]")
+            settings_repo.set_setting("external_api_disable_pool_claim_random", "false")
+            settings_repo.set_setting(
+                "external_api_disable_pool_claim_release", "false"
+            )
+            settings_repo.set_setting(
+                "external_api_disable_pool_claim_complete", "false"
+            )
+            settings_repo.set_setting("external_api_disable_pool_stats", "false")
 
     @staticmethod
     def _auth_headers(value: str = "abc123"):
@@ -38,6 +47,49 @@ class ExternalPoolApiTests(unittest.TestCase):
             from outlook_web.repositories import settings as settings_repo
 
             settings_repo.set_setting("external_api_key", value)
+
+    def _create_external_api_key(
+        self,
+        name: str,
+        api_key: str,
+        *,
+        pool_access: bool = False,
+        enabled: bool = True,
+    ):
+        with self.app.app_context():
+            from outlook_web.repositories import (
+                external_api_keys as external_api_keys_repo,
+            )
+
+            return external_api_keys_repo.create_external_api_key(
+                name=name,
+                api_key=api_key,
+                allowed_emails=[],
+                pool_access=pool_access,
+                enabled=enabled,
+            )
+
+    def _set_public_mode(self, enabled: bool):
+        with self.app.app_context():
+            from outlook_web.repositories import settings as settings_repo
+
+            settings_repo.set_setting(
+                "external_api_public_mode", "true" if enabled else "false"
+            )
+
+    def _set_ip_whitelist(self, ips: list[str]):
+        import json
+
+        with self.app.app_context():
+            from outlook_web.repositories import settings as settings_repo
+
+            settings_repo.set_setting("external_api_ip_whitelist", json.dumps(ips))
+
+    def _set_disable_feature(self, setting_key: str, enabled: bool):
+        with self.app.app_context():
+            from outlook_web.repositories import settings as settings_repo
+
+            settings_repo.set_setting(setting_key, "true" if enabled else "false")
 
     def _insert_pool_account(
         self, *, provider: str = "outlook", pool_status: str = "available"
@@ -174,3 +226,79 @@ class ExternalPoolApiTests(unittest.TestCase):
         data = resp.get_json()
         self.assertFalse(data.get("success"))
         self.assertEqual(data.get("code"), "FEATURE_DISABLED")
+
+    def test_external_pool_stats_disabled_in_public_mode(self):
+        client = self.app.test_client()
+        self._set_external_api_key("abc123")
+        with self.app.app_context():
+            from outlook_web.repositories import settings as settings_repo
+
+            settings_repo.set_setting("pool_external_enabled", "true")
+        self._set_public_mode(True)
+        self._set_ip_whitelist(["127.0.0.1"])
+        self._set_disable_feature("external_api_disable_pool_stats", True)
+
+        resp = client.get("/api/external/pool/stats", headers=self._auth_headers())
+
+        self.assertEqual(resp.status_code, 403)
+        data = resp.get_json()
+        self.assertEqual(data.get("code"), "FEATURE_DISABLED")
+        self.assertEqual(data.get("data", {}).get("feature"), "pool_stats")
+
+    def test_external_pool_claim_random_disabled_in_public_mode(self):
+        client = self.app.test_client()
+        self._set_external_api_key("abc123")
+        with self.app.app_context():
+            from outlook_web.repositories import settings as settings_repo
+
+            settings_repo.set_setting("pool_external_enabled", "true")
+        self._set_public_mode(True)
+        self._set_ip_whitelist(["127.0.0.1"])
+        self._set_disable_feature("external_api_disable_pool_claim_random", True)
+
+        resp = client.post(
+            "/api/external/pool/claim-random",
+            headers=self._auth_headers(),
+            json={"caller_id": "ext-worker-01", "task_id": "task-ext-disabled"},
+        )
+
+        self.assertEqual(resp.status_code, 403)
+        data = resp.get_json()
+        self.assertEqual(data.get("code"), "FEATURE_DISABLED")
+        self.assertEqual(data.get("data", {}).get("feature"), "pool_claim_random")
+
+    def test_external_pool_requires_pool_access_for_multi_key(self):
+        client = self.app.test_client()
+        self._create_external_api_key("partner-a", "multi-pool-deny", pool_access=False)
+        with self.app.app_context():
+            from outlook_web.repositories import settings as settings_repo
+
+            settings_repo.set_setting("pool_external_enabled", "true")
+        self._insert_pool_account(provider="outlook")
+
+        resp = client.get(
+            "/api/external/pool/stats",
+            headers=self._auth_headers("multi-pool-deny"),
+        )
+
+        self.assertEqual(resp.status_code, 403)
+        data = resp.get_json()
+        self.assertEqual(data.get("code"), "FORBIDDEN")
+
+    def test_external_pool_allows_pool_access_for_multi_key(self):
+        client = self.app.test_client()
+        self._create_external_api_key("partner-a", "multi-pool-allow", pool_access=True)
+        with self.app.app_context():
+            from outlook_web.repositories import settings as settings_repo
+
+            settings_repo.set_setting("pool_external_enabled", "true")
+        self._insert_pool_account(provider="outlook")
+
+        resp = client.get(
+            "/api/external/pool/stats",
+            headers=self._auth_headers("multi-pool-allow"),
+        )
+
+        self.assertEqual(resp.status_code, 200)
+        data = resp.get_json()
+        self.assertTrue(data.get("success"))
