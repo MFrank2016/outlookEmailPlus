@@ -1,0 +1,933 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>账号管理 - 简洁模式预览</title>
+    <link rel="stylesheet" href="../../../static/css/main.css">
+    <style>
+        :root {
+            color-scheme: light;
+        }
+
+        body {
+            background:
+                radial-gradient(circle at top right, rgba(184, 92, 56, 0.08), transparent 22%),
+                radial-gradient(circle at left bottom, rgba(36, 89, 72, 0.08), transparent 20%),
+                var(--bg);
+        }
+
+        .preview-page {
+            min-height: 100vh;
+            display: flex;
+        }
+
+        .preview-page .content {
+            display: flex;
+            flex-direction: column;
+            min-width: 0;
+        }
+
+        .preview-page .page {
+            display: block;
+            padding: 22px;
+        }
+
+        .preview-shell {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            min-width: 0;
+        }
+
+        .compact-board {
+            display: flex;
+            flex-direction: column;
+            min-height: calc(100vh - 96px);
+            border: 1px solid var(--border);
+            border-radius: 22px;
+            overflow: hidden;
+            background: rgba(255, 251, 246, 0.92);
+            box-shadow: 0 20px 50px rgba(78, 61, 37, 0.08);
+        }
+
+        .board-toolbar {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 16px;
+            padding: 16px 18px;
+            border-bottom: 1px solid var(--border-light);
+            background: rgba(255, 248, 240, 0.92);
+        }
+
+        .toolbar-left,
+        .toolbar-right {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        .view-badge {
+            display: inline-flex;
+            align-items: center;
+            height: 34px;
+            padding: 0 14px;
+            border-radius: 999px;
+            background: rgba(184, 92, 56, 0.12);
+            color: var(--clr-primary);
+            font-size: 0.78rem;
+            font-weight: 800;
+            letter-spacing: 0.02em;
+        }
+
+        .toolbar-meta {
+            color: var(--text-muted);
+            font-size: 0.8rem;
+        }
+
+        .btn-inline {
+            height: 34px;
+            padding: 0 12px;
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            background: rgba(255, 255, 255, 0.82);
+            color: var(--text-secondary);
+            font-size: 0.78rem;
+            font-weight: 700;
+        }
+
+        .btn-inline.primary {
+            border-color: transparent;
+            background: var(--clr-primary);
+            color: #fff;
+        }
+
+        .btn-inline.ghost {
+            background: rgba(255, 255, 255, 0.56);
+        }
+
+        .mode-switch {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            padding: 4px;
+            border: 1px solid var(--border);
+            border-radius: 999px;
+            background: rgba(255, 255, 255, 0.86);
+        }
+
+        .mode-pill {
+            min-width: 88px;
+            height: 34px;
+            padding: 0 14px;
+            border: none;
+            border-radius: 999px;
+            background: transparent;
+            color: var(--text-muted);
+            font-size: 0.78rem;
+            font-weight: 800;
+            cursor: pointer;
+        }
+
+        .mode-pill.active {
+            background: var(--clr-primary);
+            color: #fff;
+            box-shadow: 0 8px 16px rgba(184, 92, 56, 0.2);
+        }
+
+        .group-strip {
+            display: flex;
+            align-items: stretch;
+            gap: 10px;
+            padding: 14px 18px;
+            border-bottom: 1px solid var(--border-light);
+            background: rgba(252, 246, 239, 0.84);
+            overflow-x: auto;
+        }
+
+        .group-chip {
+            min-width: 170px;
+            padding: 12px 14px;
+            border: 1px solid rgba(198, 185, 168, 0.42);
+            border-radius: 16px;
+            background: rgba(255, 253, 250, 0.92);
+            text-align: left;
+            cursor: pointer;
+            transition: border-color var(--transition), transform var(--transition), box-shadow var(--transition);
+        }
+
+        .group-chip:hover {
+            transform: translateY(-1px);
+            border-color: rgba(184, 92, 56, 0.24);
+        }
+
+        .group-chip.active {
+            border-color: rgba(184, 92, 56, 0.34);
+            background: rgba(255, 247, 240, 0.98);
+            box-shadow: inset 3px 0 0 var(--clr-primary);
+        }
+
+        .group-chip-name {
+            display: block;
+            font-size: 0.86rem;
+            font-weight: 800;
+            color: var(--text-primary);
+        }
+
+        .group-chip-meta {
+            display: block;
+            margin-top: 6px;
+            color: var(--text-muted);
+            font-size: 0.75rem;
+            white-space: nowrap;
+        }
+
+        .mail-list-wrap {
+            display: flex;
+            flex-direction: column;
+            min-height: 0;
+            flex: 1;
+        }
+
+        .mail-head,
+        .mail-row {
+            display: grid;
+            grid-template-columns: 34px minmax(280px, 1.35fr) 130px minmax(260px, 1fr) minmax(180px, 0.8fr) 118px;
+            align-items: center;
+            column-gap: 14px;
+        }
+
+        .mail-head {
+            padding: 12px 18px;
+            color: var(--text-muted);
+            font-size: 0.72rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            border-bottom: 1px solid var(--border-light);
+            background: rgba(252, 246, 239, 0.96);
+        }
+
+        .mail-rows {
+            display: flex;
+            flex-direction: column;
+            padding: 10px 12px 88px;
+            gap: 10px;
+            overflow: auto;
+        }
+
+        .mail-row {
+            min-height: 76px;
+            padding: 12px 14px;
+            border: 1px solid rgba(198, 185, 168, 0.42);
+            border-radius: 16px;
+            background: rgba(255, 253, 250, 0.96);
+            transition: transform var(--transition), border-color var(--transition), box-shadow var(--transition);
+        }
+
+        .mail-row:hover {
+            transform: translateY(-1px);
+            border-color: rgba(184, 92, 56, 0.28);
+            box-shadow: 0 10px 20px rgba(78, 61, 37, 0.05);
+        }
+
+        .mail-row.is-selected {
+            border-color: rgba(184, 92, 56, 0.34);
+            box-shadow: inset 3px 0 0 var(--clr-primary);
+            background: rgba(255, 248, 242, 0.98);
+        }
+
+        .select-cell input {
+            width: 16px;
+            height: 16px;
+            accent-color: var(--clr-primary);
+            cursor: pointer;
+        }
+
+        .mail-card,
+        .mail-code {
+            min-width: 0;
+        }
+
+        .mail-card-button,
+        .code-button {
+            width: 100%;
+            border: none;
+            background: transparent;
+            padding: 0;
+            text-align: left;
+            cursor: pointer;
+        }
+
+        .mail-address {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 0.92rem;
+            font-weight: 800;
+            color: var(--text-primary);
+        }
+
+        .mail-address::after {
+            content: "复制";
+            display: inline-flex;
+            align-items: center;
+            height: 20px;
+            padding: 0 6px;
+            border-radius: 999px;
+            background: rgba(184, 92, 56, 0.09);
+            color: var(--clr-primary);
+            font-size: 0.64rem;
+            font-weight: 700;
+        }
+
+        .mail-meta {
+            margin-top: 6px;
+            color: var(--text-muted);
+            font-size: 0.76rem;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .code-button {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 44px;
+            border-radius: 12px;
+            background: rgba(36, 89, 72, 0.08);
+            color: #245948;
+            font-size: 1.08rem;
+            font-weight: 900;
+            letter-spacing: 0.08em;
+        }
+
+        .code-button.empty {
+            background: rgba(128, 128, 128, 0.08);
+            color: var(--text-muted);
+            font-size: 0.82rem;
+            letter-spacing: 0;
+            font-weight: 700;
+        }
+
+        .mail-snippet {
+            min-width: 0;
+        }
+
+        .snippet-subject {
+            font-size: 0.84rem;
+            font-weight: 700;
+            color: var(--text-primary);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .snippet-meta {
+            margin-top: 6px;
+            color: var(--text-muted);
+            font-size: 0.75rem;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .tag-list {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+        }
+
+        .tag-chip {
+            display: inline-flex;
+            align-items: center;
+            height: 26px;
+            padding: 0 10px;
+            border-radius: 999px;
+            background: rgba(184, 92, 56, 0.08);
+            color: var(--text-secondary);
+            font-size: 0.72rem;
+            font-weight: 700;
+        }
+
+        .tag-chip.muted {
+            background: rgba(120, 120, 120, 0.08);
+            color: var(--text-muted);
+        }
+
+        .action-cell {
+            display: flex;
+            align-items: center;
+            justify-content: flex-end;
+            gap: 8px;
+            position: relative;
+        }
+
+        .pull-button,
+        .menu-button {
+            height: 36px;
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            background: rgba(255, 255, 255, 0.88);
+            font-size: 0.78rem;
+            font-weight: 800;
+            color: var(--text-secondary);
+            cursor: pointer;
+        }
+
+        .pull-button {
+            min-width: 62px;
+            background: rgba(184, 92, 56, 0.12);
+            color: var(--clr-primary);
+            border-color: rgba(184, 92, 56, 0.18);
+        }
+
+        .menu-button {
+            width: 36px;
+            font-size: 1.1rem;
+            line-height: 1;
+        }
+
+        .menu-panel {
+            position: absolute;
+            top: calc(100% + 8px);
+            right: 0;
+            min-width: 146px;
+            padding: 8px;
+            border: 1px solid var(--border);
+            border-radius: 14px;
+            background: rgba(255, 253, 250, 0.98);
+            box-shadow: 0 18px 30px rgba(58, 44, 21, 0.12);
+            display: none;
+            z-index: 5;
+        }
+
+        .menu-panel.open {
+            display: block;
+        }
+
+        .menu-item {
+            width: 100%;
+            display: flex;
+            align-items: center;
+            min-height: 36px;
+            padding: 0 10px;
+            border: none;
+            border-radius: 10px;
+            background: transparent;
+            color: var(--text-secondary);
+            font-size: 0.78rem;
+            font-weight: 700;
+            cursor: pointer;
+            text-align: left;
+        }
+
+        .menu-item:hover {
+            background: rgba(184, 92, 56, 0.08);
+        }
+
+        .menu-item.danger {
+            color: #b53737;
+        }
+
+        .empty-state-lite {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 220px;
+            color: var(--text-muted);
+            font-size: 0.86rem;
+            font-weight: 700;
+        }
+
+        .batch-bar {
+            position: sticky;
+            bottom: 0;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            padding: 14px 18px;
+            border-top: 1px solid var(--border-light);
+            background: rgba(255, 248, 240, 0.96);
+            backdrop-filter: blur(12px);
+        }
+
+        .batch-info {
+            font-size: 0.8rem;
+            color: var(--text-secondary);
+            font-weight: 700;
+        }
+
+        .batch-actions {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        .preview-toast {
+            position: fixed;
+            right: 24px;
+            bottom: 24px;
+            padding: 12px 14px;
+            border-radius: 14px;
+            background: rgba(36, 89, 72, 0.92);
+            color: #fff;
+            font-size: 0.8rem;
+            font-weight: 700;
+            box-shadow: 0 16px 28px rgba(36, 89, 72, 0.22);
+            opacity: 0;
+            pointer-events: none;
+            transform: translateY(10px);
+            transition: opacity 0.2s ease, transform 0.2s ease;
+        }
+
+        .preview-toast.show {
+            opacity: 1;
+            transform: translateY(0);
+        }
+
+        @media (max-width: 1320px) {
+            .mail-head,
+            .mail-row {
+                grid-template-columns: 34px minmax(240px, 1.2fr) 120px minmax(220px, 0.95fr) minmax(150px, 0.78fr) 110px;
+            }
+        }
+
+        @media (max-width: 1080px) {
+            .preview-page .page {
+                padding: 14px;
+            }
+
+            .mail-list-wrap {
+                overflow: auto;
+            }
+
+            .mail-head,
+            .mail-row {
+                min-width: 980px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div id="app" class="preview-page">
+        <aside class="sidebar" id="sidebar">
+            <div class="sidebar-logo">
+                <div class="logo-mark">📬</div>
+                <div>
+                    <span>Outlook 邮件</span>
+                    <small>Preview</small>
+                </div>
+            </div>
+
+            <nav class="sidebar-nav">
+                <div class="nav-section">邮箱管理</div>
+                <button class="nav-item active">
+                    <span class="nav-icon">📬</span><span>账号管理</span>
+                </button>
+                <button class="nav-item">
+                    <span class="nav-icon">⚡</span><span>临时邮箱</span>
+                </button>
+
+                <div class="nav-section">系统</div>
+                <button class="nav-item">
+                    <span class="nav-icon">⚙️</span><span>系统设置</span>
+                </button>
+            </nav>
+
+            <div class="sidebar-bottom">
+                <div class="user-chip">
+                    <div class="user-avatar">管</div>
+                    <div class="user-chip-info">
+                        <div class="user-chip-name">管理员</div>
+                        <div class="user-chip-role">简洁模式预览</div>
+                    </div>
+                </div>
+            </div>
+        </aside>
+
+        <div class="content">
+            <header class="topbar">
+                <div class="topbar-left">
+                    <div>
+                        <div class="topbar-title">账号管理</div>
+                        <div class="topbar-subtitle">简洁模式</div>
+                    </div>
+                </div>
+                <div id="topbar-actions">
+                    <div class="mode-switch">
+                        <button class="mode-pill" data-mode="standard">标准模式</button>
+                        <button class="mode-pill active" data-mode="compact">简洁模式</button>
+                    </div>
+                    <button class="btn-inline primary">添加账号</button>
+                </div>
+            </header>
+
+            <div class="page">
+                <div class="preview-shell">
+                    <section class="compact-board">
+                        <div class="board-toolbar">
+                            <div class="toolbar-left">
+                                <span class="view-badge">简洁取码模式</span>
+                                <span class="toolbar-meta" id="toolbarMeta">当前分组：默认分组 · 0 个账号</span>
+                            </div>
+                            <div class="toolbar-right">
+                                <button class="btn-inline ghost tag-manage-trigger">管理标签</button>
+                            </div>
+                        </div>
+
+                        <div class="group-strip" id="groupStrip"></div>
+
+                        <div class="mail-list-wrap">
+                            <div class="mail-head">
+                                <div><input type="checkbox" id="selectAll"></div>
+                                <div>邮箱</div>
+                                <div>验证码</div>
+                                <div>最新邮件</div>
+                                <div>标签</div>
+                                <div style="text-align:right;">操作</div>
+                            </div>
+
+                            <div class="mail-rows" id="mailRows"></div>
+                        </div>
+
+                        <div class="batch-bar">
+                            <div class="batch-info" id="batchInfo">已选 0 个账号</div>
+                            <div class="batch-actions">
+                                <button class="btn-inline ghost batch-tag-trigger" data-tag-action="add">打标签</button>
+                                <button class="btn-inline ghost batch-tag-trigger" data-tag-action="remove">去标签</button>
+                                <button class="btn-inline">移动分组</button>
+                                <button class="btn-inline primary">批量删除</button>
+                            </div>
+                        </div>
+                    </section>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="preview-toast" id="previewToast">已复制</div>
+
+    <script>
+        const toast = document.getElementById("previewToast");
+        const toolbarMeta = document.getElementById("toolbarMeta");
+        const groupStrip = document.getElementById("groupStrip");
+        const mailRows = document.getElementById("mailRows");
+        const batchInfo = document.getElementById("batchInfo");
+        const batchBar = document.querySelector(".batch-bar");
+        const selectAll = document.getElementById("selectAll");
+
+        const store = {
+            currentGroupId: "default",
+            selectedAccountIds: new Set([101, 201]),
+            groups: [
+                {
+                    id: "default",
+                    name: "默认分组",
+                    hint: "常用账号",
+                    accounts: [
+                        {
+                            id: 101,
+                            email: "luna.live@outlook.com",
+                            provider: "Outlook",
+                            status: "正常",
+                            code: "381294",
+                            subject: "Microsoft 验证码",
+                            mailMeta: "收件箱 · 1 分钟前 · account-security-noreply@accountprotection.microsoft.com",
+                            tags: ["常用", "注册"]
+                        },
+                        {
+                            id: 102,
+                            email: "north.maple@outlook.com",
+                            provider: "Outlook",
+                            status: "待拉取",
+                            code: "908114",
+                            subject: "Amazon One-Time Password",
+                            mailMeta: "垃圾邮件 · 9 分钟前 · account-update@amazon.com",
+                            tags: ["跨境"]
+                        },
+                        {
+                            id: 103,
+                            email: "gate.west@outlook.com",
+                            provider: "Outlook",
+                            status: "正常",
+                            code: "447520",
+                            subject: "OpenAI sign in code",
+                            mailMeta: "收件箱 · 36 分钟前 · noreply@tm.openai.com",
+                            tags: ["AI", "常用"]
+                        }
+                    ]
+                },
+                {
+                    id: "marketing",
+                    name: "营销组",
+                    hint: "投放与新号",
+                    accounts: [
+                        {
+                            id: 201,
+                            email: "amber.flow@outlook.com",
+                            provider: "Outlook",
+                            status: "正常",
+                            code: "652871",
+                            subject: "TikTok Business 登录验证码",
+                            mailMeta: "收件箱 · 4 分钟前 · no-reply@tiktok.com",
+                            tags: ["投放", "新号"]
+                        },
+                        {
+                            id: 202,
+                            email: "muse.delta@outlook.com",
+                            provider: "Outlook",
+                            status: "正常",
+                            code: "224870",
+                            subject: "Meta Business Security Code",
+                            mailMeta: "收件箱 · 12 分钟前 · security@facebookmail.com",
+                            tags: ["Meta", "常用"]
+                        }
+                    ]
+                },
+                {
+                    id: "pool",
+                    name: "养号池",
+                    hint: "风控观察",
+                    accounts: [
+                        {
+                            id: 301,
+                            email: "signal.pool@outlook.com",
+                            provider: "Outlook",
+                            status: "风控观察",
+                            code: "",
+                            subject: "暂无最近验证码邮件",
+                            mailMeta: "上次拉取：22 分钟前 · 可以直接点右侧拉取",
+                            tags: ["风控", "观察"]
+                        },
+                        {
+                            id: 302,
+                            email: "echo.pool@outlook.com",
+                            provider: "Outlook",
+                            status: "正常",
+                            code: "518260",
+                            subject: "X 登录验证码",
+                            mailMeta: "收件箱 · 18 分钟前 · info@x.com",
+                            tags: ["社媒"]
+                        }
+                    ]
+                },
+                {
+                    id: "cross",
+                    name: "跨境组",
+                    hint: "站点与支付",
+                    accounts: [
+                        {
+                            id: 401,
+                            email: "harbor.bridge@outlook.com",
+                            provider: "Outlook",
+                            status: "正常",
+                            code: "793641",
+                            subject: "Stripe verification code",
+                            mailMeta: "收件箱 · 6 分钟前 · no-reply@stripe.com",
+                            tags: ["支付", "常用"]
+                        }
+                    ]
+                }
+            ]
+        };
+
+        function showToast(text) {
+            toast.textContent = text;
+            toast.classList.add("show");
+            window.clearTimeout(showToast._timer);
+            showToast._timer = window.setTimeout(() => toast.classList.remove("show"), 1200);
+        }
+
+        function getCurrentGroup() {
+            return store.groups.find((group) => group.id === store.currentGroupId) || store.groups[0];
+        }
+
+        function updateHeader() {
+            const group = getCurrentGroup();
+            toolbarMeta.textContent = `当前分组：${group.name} · ${group.accounts.length} 个账号 · 已选 ${store.selectedAccountIds.size} 个`;
+        }
+
+        function renderGroups() {
+            groupStrip.innerHTML = store.groups.map((group) => `
+                <button class="group-chip ${group.id === store.currentGroupId ? "active" : ""}" data-group-id="${group.id}">
+                    <span class="group-chip-name">${group.name}</span>
+                    <span class="group-chip-meta">${group.hint} · ${group.accounts.length} 个账号</span>
+                </button>
+            `).join("");
+
+            groupStrip.querySelectorAll(".group-chip").forEach((button) => {
+                button.addEventListener("click", () => {
+                    store.currentGroupId = button.dataset.groupId;
+                    render();
+                });
+            });
+        }
+
+        function renderRows() {
+            const group = getCurrentGroup();
+
+            if (!group.accounts.length) {
+                mailRows.innerHTML = '<div class="empty-state-lite">当前分组暂无账号</div>';
+                return;
+            }
+
+            mailRows.innerHTML = group.accounts.map((account, index) => `
+                <div class="mail-row ${store.selectedAccountIds.has(account.id) ? "is-selected" : ""}">
+                    <div class="select-cell">
+                        <input type="checkbox" class="row-check" data-index="${index}" data-account-id="${account.id}" ${store.selectedAccountIds.has(account.id) ? "checked" : ""}>
+                    </div>
+                    <div class="mail-card">
+                        <button class="mail-card-button copy-trigger" data-copy="${account.email}" data-label="邮箱">
+                            <span class="mail-address">${account.email}</span>
+                            <div class="mail-meta">${account.provider} · ${group.name} · ${account.status}</div>
+                        </button>
+                    </div>
+                    <div class="mail-code">
+                        <button class="code-button ${account.code ? "copy-trigger" : "empty"}" ${account.code ? `data-copy="${account.code}" data-label="验证码"` : ""}>${account.code || "暂无"}</button>
+                    </div>
+                    <div class="mail-snippet">
+                        <div class="snippet-subject">${account.subject}</div>
+                        <div class="snippet-meta">${account.mailMeta}</div>
+                    </div>
+                    <div class="tag-list">
+                        ${account.tags.map((tag) => `<span class="tag-chip ${tag === "风控" || tag === "观察" ? "muted" : ""}">${tag}</span>`).join("")}
+                    </div>
+                    <div class="action-cell">
+                        <button class="pull-button">拉取</button>
+                        <button class="menu-button menu-toggle" aria-label="更多操作">⋯</button>
+                        <div class="menu-panel">
+                            <button class="menu-item copy-trigger" data-copy="${account.email}" data-label="邮箱">复制邮箱</button>
+                            ${account.code ? `<button class="menu-item copy-trigger" data-copy="${account.code}" data-label="验证码">复制验证码</button>` : ""}
+                            <button class="menu-item row-tag-trigger" data-tag-action="add">打标签</button>
+                            <button class="menu-item">移动分组</button>
+                            <button class="menu-item danger">删除账号</button>
+                        </div>
+                    </div>
+                </div>
+            `).join("");
+
+            bindRowActions();
+        }
+
+        function updateBatchInfo() {
+            const group = getCurrentGroup();
+            const currentGroupSelectedCount = group.accounts.filter((account) => store.selectedAccountIds.has(account.id)).length;
+            batchInfo.textContent = `已选 ${store.selectedAccountIds.size} 个账号`;
+            selectAll.checked = group.accounts.length > 0 && currentGroupSelectedCount === group.accounts.length;
+            batchBar.style.display = store.selectedAccountIds.size > 0 ? "flex" : "none";
+        }
+
+        function bindRowActions() {
+            mailRows.querySelectorAll(".copy-trigger").forEach((node) => {
+                node.addEventListener("click", async (event) => {
+                    event.stopPropagation();
+                    const value = node.dataset.copy;
+                    const label = node.dataset.label || "内容";
+
+                    if (!value) {
+                        return;
+                    }
+
+                    try {
+                        await navigator.clipboard.writeText(value);
+                        showToast(label + "已复制");
+                    } catch (error) {
+                        showToast(label + "复制失败");
+                    }
+                });
+            });
+
+            mailRows.querySelectorAll(".row-check").forEach((checkbox) => {
+                checkbox.addEventListener("change", () => {
+                    const accountId = Number(checkbox.dataset.accountId);
+                    if (checkbox.checked) {
+                        store.selectedAccountIds.add(accountId);
+                    } else {
+                        store.selectedAccountIds.delete(accountId);
+                    }
+                    render();
+                });
+            });
+
+            mailRows.querySelectorAll(".menu-toggle").forEach((button) => {
+                button.addEventListener("click", (event) => {
+                    event.stopPropagation();
+                    const panel = button.nextElementSibling;
+                    const isOpen = panel.classList.contains("open");
+
+                    document.querySelectorAll(".menu-panel.open").forEach((node) => node.classList.remove("open"));
+
+                    if (!isOpen) {
+                        panel.classList.add("open");
+                    }
+                });
+            });
+
+            mailRows.querySelectorAll(".pull-button").forEach((button) => {
+                button.addEventListener("click", (event) => {
+                    event.stopPropagation();
+                    showToast("已触发单个账号拉取");
+                });
+            });
+
+            mailRows.querySelectorAll(".row-tag-trigger").forEach((button) => {
+                button.addEventListener("click", (event) => {
+                    event.stopPropagation();
+                    showToast("这里复用正常模式的打标签弹窗，不清空当前已选");
+                });
+            });
+        }
+
+        function render() {
+            renderGroups();
+            updateHeader();
+            renderRows();
+            updateBatchInfo();
+        }
+
+        selectAll.addEventListener("change", () => {
+            const group = getCurrentGroup();
+            group.accounts.forEach((account) => {
+                if (selectAll.checked) {
+                    store.selectedAccountIds.add(account.id);
+                } else {
+                    store.selectedAccountIds.delete(account.id);
+                }
+            });
+            render();
+        });
+
+        document.querySelectorAll(".mode-pill").forEach((button) => {
+            button.addEventListener("click", () => {
+                document.querySelectorAll(".mode-pill").forEach((node) => node.classList.remove("active"));
+                button.classList.add("active");
+                showToast(button.dataset.mode === "standard" ? "这里切到标准模式页面" : "当前就是简洁模式");
+            });
+        });
+
+        document.querySelectorAll(".tag-manage-trigger").forEach((button) => {
+            button.addEventListener("click", () => {
+                showToast("这里复用正常模式的标签管理");
+            });
+        });
+
+        document.querySelectorAll(".batch-tag-trigger").forEach((button) => {
+            button.addEventListener("click", () => {
+                showToast(button.dataset.tagAction === "add" ? "这里复用正常模式的批量打标签" : "这里复用正常模式的批量去标签");
+            });
+        });
+
+        document.addEventListener("click", () => {
+            document.querySelectorAll(".menu-panel.open").forEach((node) => node.classList.remove("open"));
+        });
+
+        render();
+    </script>
+</body>
+</html>

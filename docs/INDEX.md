@@ -19,6 +19,7 @@
   [中文接口文档](/E:/hushaokang/Data-code/outlookEmail/docs/API/注册与邮箱池接口文档.md)
   [English API Doc](/E:/hushaokang/Data-code/outlookEmail/docs/API/registration-mail-pool-api.en.md)
 - 简洁模式设计：
+  [账号管理简洁模式 FD](/E:/hushaokang/Data-code/outlookEmail/docs/PRD/2026-03-20-账号管理-简洁模式-FD.md)
   [账号管理简洁模式 TD](/E:/hushaokang/Data-code/outlookEmail/docs/PRD/2026-03-20-账号管理-简洁模式-TD.md)
   [简洁模式预览稿](/E:/hushaokang/Data-code/outlookEmail/docs/REFERENCE/ui-preview/compact-mode-preview.html)
   [简洁模式预览截图目录](/E:/hushaokang/Data-code/outlookEmail/docs/REFERENCE/assets/compact-mode-preview)
