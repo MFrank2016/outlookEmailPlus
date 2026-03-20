@@ -898,6 +898,7 @@ ${details}
 
             const btn = document.getElementById('exchangeTokenBtn');
             btn.disabled = true;
+            // 运行时按钮态不会经过模板静态翻译，必须显式走 i18n helper。
             btn.textContent = translateAppTextLocal('⏳ 换取中...');
 
             try {
@@ -990,6 +991,8 @@ ${details}
             const hintEl = document.getElementById('externalApiKeysJsonHint');
             if (!hintEl) return;
 
+            // 多 Key 编辑器依赖“脱敏值仅表示保持原值”的前后端约定，
+            // 这里的提示文案不是普通 copy，而是在解释保存语义。
             if (normalized.length > 0) {
                 hintEl.textContent = translateAppTextLocal(`当前已配置 ${normalized.length} 个多 Key。保留已有脱敏 api_key 表示不修改该 Key；清空后保存表示清空全部多 Key。`);
             } else {

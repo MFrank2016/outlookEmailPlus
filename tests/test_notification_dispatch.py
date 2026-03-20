@@ -240,6 +240,68 @@ class NotificationDispatchTests(unittest.TestCase):
             ).fetchall()
             self.assertEqual(rows, [])
 
+    def test_legacy_email_notification_job_skips_disabled_account_but_keeps_temp_email(self):
+        with self.app.app_context():
+            from outlook_web.db import get_db
+            from outlook_web.services import notification_dispatch
+
+            self._insert_account("disabled@example.com", telegram_enabled=0)
+            self._insert_temp_email("legacy-temp@example.com")
+            notification_dispatch.bootstrap_channel_cursors(
+                notification_dispatch.CHANNEL_EMAIL,
+                cursor_value="2026-03-01T00:00:00",
+            )
+            settings_repo.set_setting("email_notification_enabled", "true")
+            settings_repo.set_setting("email_notification_recipient", "notify@example.com")
+
+            def fake_fetch(source, _since):
+                if source["source_type"] == notification_dispatch.SOURCE_ACCOUNT:
+                    return [
+                        {
+                            "message_id": "<disabled@example.com>",
+                            "subject": "disabled account should be skipped",
+                            "sender": "sender@example.com",
+                            "received_at": "2026-03-02T10:00:00",
+                            "content": "body",
+                            "folder": "inbox",
+                        }
+                    ]
+                return [
+                    {
+                        "message_id": "temp-legacy-1",
+                        "subject": "Temp Subject",
+                        "sender": "temp@example.com",
+                        "received_at": "2026-03-02T11:00:00",
+                        "content": "temp body",
+                        "folder": "inbox",
+                    }
+                ]
+
+            with patch.dict(
+                os.environ,
+                {
+                    "EMAIL_NOTIFICATION_SMTP_HOST": "smtp.example.com",
+                    "EMAIL_NOTIFICATION_SMTP_PORT": "587",
+                    "EMAIL_NOTIFICATION_FROM": "noreply@example.com",
+                },
+                clear=False,
+            ), patch(
+                "outlook_web.services.notification_dispatch.fetch_source_messages",
+                side_effect=fake_fetch,
+            ) as fetch_mock, patch(
+                "outlook_web.services.notification_dispatch.send_business_email_notification"
+            ) as send_mock:
+                notification_dispatch.run_email_notification_job(self.app)
+
+            self.assertEqual(fetch_mock.call_count, 1)
+            self.assertEqual(send_mock.call_count, 1)
+            sent_source = send_mock.call_args[0][0]
+            self.assertEqual(sent_source["source_type"], notification_dispatch.SOURCE_TEMP_EMAIL)
+            rows = get_db().execute(
+                "SELECT source_type, status FROM notification_delivery_logs ORDER BY source_type ASC"
+            ).fetchall()
+            self.assertEqual([(row["source_type"], row["status"]) for row in rows], [("temp_email", "sent")])
+
     def test_missing_message_id_uses_stable_fallback_dedup(self):
         with self.app.app_context():
             from outlook_web.db import get_db

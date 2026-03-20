@@ -298,6 +298,10 @@ def api_update_settings() -> Any:
         ).strip()
 
     if "email_notification_enabled" in data or "email_notification_recipient" in data:
+        # 邮件通知配置不只是保存到 settings：
+        # 1. recipient 会影响统一通知 Job 的轮询间隔选择
+        # 2. 从关闭 -> 开启时需要补建 email cursor，避免首次启动重扫历史邮件
+        # 3. 因此开关和收件人变更都必须进入同一条 reload 链路
         if (
             target_email_notification_enabled
             and not target_email_notification_recipient
@@ -725,6 +729,8 @@ def api_update_settings() -> Any:
             try:
                 from outlook_web.services import notification_dispatch
 
+                # 首次启用邮件通知时先初始化 channel cursor，
+                # 避免下一轮调度把存量历史邮件当成“新邮件”整批补发。
                 notification_dispatch.bootstrap_channel_cursors(
                     notification_dispatch.CHANNEL_EMAIL
                 )

@@ -34,6 +34,11 @@ class V190FrontendContractTests(unittest.TestCase):
         self.assertIn("const core = text.trim()", js)
         self.assertIn("characterData: true", js)
         self.assertIn("attributes: true", js)
+        self.assertIn("mutation.type === 'characterData'", js)
+        self.assertIn("mutation.type === 'attributes'", js)
+        self.assertIn("mutation.attributeName === 'value'", js)
+        self.assertIn("translated !== value", js)
+        self.assertIn("translatedValue !== mutation.target.value", js)
 
     def test_main_js_does_not_override_i18n_runtime_helpers(self):
         client = self.app.test_client()

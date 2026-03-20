@@ -612,6 +612,8 @@
         if (!value) {
             return;
         }
+        // 运行时翻译必须保持幂等；只有结果真的变化时才回写，
+        // 否则 MutationObserver 会因为属性再次被设置而反复触发。
         const translated = translateAppText(value);
         if (translated !== value) {
             element.setAttribute(attrName, translated);
@@ -638,6 +640,7 @@
             return;
         }
 
+        // 动态文案既可能在文本节点里，也可能挂在 placeholder/title/aria-label/value 上。
         translateAttribute(root, 'placeholder');
         translateAttribute(root, 'title');
         translateAttribute(root, 'aria-label');
@@ -811,6 +814,7 @@
     function observeMutations() {
         const observer = new MutationObserver((mutations) => {
             mutations.forEach((mutation) => {
+                // childList 负责新插入节点；characterData/attributes 负责运行时改写的已有节点。
                 if (mutation.type === 'childList') {
                     mutation.addedNodes.forEach((node) => translateNode(node));
                     return;
