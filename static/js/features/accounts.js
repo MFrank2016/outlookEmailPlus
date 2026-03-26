@@ -426,6 +426,53 @@
             document.getElementById('editAccountModal').classList.remove('show');
         }
 
+        function focusEditRemarkField() {
+            const remarkField = document.getElementById('editRemark');
+            if (!remarkField) {
+                return;
+            }
+            remarkField.focus();
+            remarkField.setSelectionRange(remarkField.value.length, remarkField.value.length);
+        }
+
+        async function showEditRemarkOnly(accountId) {
+            await showEditAccountModal(accountId);
+            focusEditRemarkField();
+        }
+
+        async function updateAccountRemarkOnly() {
+            const accountId = document.getElementById('editAccountId').value;
+            const remark = document.getElementById('editRemark').value.trim();
+
+            if (!accountId) {
+                showToast(translateAppTextLocal('未找到账号'), 'error');
+                return;
+            }
+
+            try {
+                const response = await fetch(`/api/accounts/${accountId}/remark`, {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ remark })
+                });
+
+                const result = await response.json();
+                if (!result.success) {
+                    handleApiError(result, '备注更新失败');
+                    return;
+                }
+
+                showToast(pickApiMessage(result, result.message, 'Remark updated successfully'), 'success');
+
+                if (currentGroupId) {
+                    delete accountsCache[currentGroupId];
+                    loadAccountsByGroup(currentGroupId, true);
+                }
+            } catch (error) {
+                showToast(translateAppTextLocal('备注更新失败'), 'error');
+            }
+        }
+
         // 更新账号
         async function updateAccount() {
             const accountId = document.getElementById('editAccountId').value;

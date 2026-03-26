@@ -258,7 +258,9 @@
             container.innerHTML = accounts.map((acc, index) => {
                 const isChecked = selectedAccountIds.has(acc.id);
                 const initial = (acc.email || '?')[0].toUpperCase();
-                const isFailed = acc.last_refresh_status === 'failed';
+                const supportsTokenRefresh = isRefreshableOutlookAccount(acc);
+                const isFailed = supportsTokenRefresh && acc.last_refresh_status === 'failed';
+                const defaultMethodLabel = supportsTokenRefresh ? 'Graph' : 'IMAP';
                 const gradient = avatarGradients[index % avatarGradients.length];
                 const providerLabel = getProviderLabel(acc.provider || acc.account_type || 'outlook');
                 const providerTagHtml = `<span class="account-provider-tag">${escapeHtml(providerLabel)}</span>`;
@@ -266,13 +268,16 @@
                     ? !!acc.notification_enabled
                     : !!acc.telegram_push_enabled;
 
-                let tokenBadge = `<span class="badge badge-gray">– ${translateAppTextLocal('未知')}</span>`;
-                if (acc.token_status === 'valid') {
-                    tokenBadge = `<span class="badge badge-green">✓ ${translateAppTextLocal('有效')}</span>`;
-                } else if (acc.token_status === 'invalid' || acc.token_status === 'expired') {
-                    tokenBadge = `<span class="badge badge-red">✗ ${translateAppTextLocal('过期')}</span>`;
-                } else if (acc.token_status === 'expiring') {
-                    tokenBadge = `<span class="badge badge-gold">⚠ ${translateAppTextLocal('即将过期')}</span>`;
+                let tokenBadge = `<span class="badge badge-gray">IMAP</span>`;
+                if (supportsTokenRefresh) {
+                    tokenBadge = `<span class="badge badge-gray">– ${translateAppTextLocal('未知')}</span>`;
+                    if (acc.token_status === 'valid') {
+                        tokenBadge = `<span class="badge badge-green">✓ ${translateAppTextLocal('有效')}</span>`;
+                    } else if (acc.token_status === 'invalid' || acc.token_status === 'expired') {
+                        tokenBadge = `<span class="badge badge-red">✗ ${translateAppTextLocal('过期')}</span>`;
+                    } else if (acc.token_status === 'expiring') {
+                        tokenBadge = `<span class="badge badge-gold">⚠ ${translateAppTextLocal('即将过期')}</span>`;
+                    }
                 }
 
                 return `
@@ -292,7 +297,7 @@
                                  style="${isFailed ? 'color:var(--clr-danger);' : ''}cursor:pointer;">
                                 ${escapeHtml(acc.email)}
                             </div>
-                            ${acc.remark && acc.remark.trim() ? `<div style="font-size:0.72rem;color:var(--text-muted);margin-top:2px;">📝 ${escapeHtml(acc.remark)}</div>` : ''}
+                            ${acc.remark && acc.remark.trim() ? `<div style="font-size:0.72rem;color:var(--text-muted);margin-top:2px;">📝 ${escapeHtml(translateAppTextLocal('备注'))}: ${escapeHtml(acc.remark)}</div>` : ''}
                             <div style="display:flex;flex-wrap:wrap;gap:3px;margin-top:3px;">
                                 ${providerTagHtml}
                                 ${(acc.tags || []).map(tag => `<span class="tag" style="background-color:${tag.color};color:white;">${escapeHtml(tag.name)}</span>`).join('')}
@@ -302,9 +307,9 @@
                     </div>
                     <div class="account-card-bottom">
                         <div class="account-meta">
-                            <span class="account-api-tag">${acc.method || 'Graph'}</span>
+                            <span class="account-api-tag">${acc.method || defaultMethodLabel}</span>
                             <span>🕐 ${formatRelativeTime(acc.last_refresh_at)}</span>
-                            ${isFailed ? `<button class="btn btn-sm btn-danger" onclick="event.stopPropagation(); showRefreshError(${acc.id}, '${escapeJs(acc.last_refresh_error || '未知错误')}', '${escapeJs(acc.email)}')" style="padding:1px 6px;font-size:0.65rem;">${escapeHtml(translateAppTextLocal('查看错误'))}</button>` : ''}
+                            ${isFailed ? `<button class="btn btn-sm btn-danger" onclick="event.stopPropagation(); showRefreshError(${acc.id}, '${escapeJs(acc.last_refresh_error || '未知错误')}', '${escapeJs(acc.email)}', '${escapeJs(acc.account_type || 'outlook')}', '${escapeJs(acc.provider || 'outlook')}')" style="padding:1px 6px;font-size:0.65rem;">${escapeHtml(translateAppTextLocal('查看错误'))}</button>` : ''}
                         </div>
                         <div class="account-actions">
                             <button class="btn-icon ${notificationEnabled ? 'tg-push-active' : ''}" onclick="event.stopPropagation(); toggleTelegramPush(${acc.id}, ${!notificationEnabled})" title="${escapeHtml(translateAppTextLocal(notificationEnabled ? '该邮箱通知参与（已开启）' : '开启该邮箱通知参与'))}">🔔</button>

@@ -301,6 +301,12 @@
             return translateAppTextLocal(zhStatusMap[normalized] || normalized || '正常');
         }
 
+        function isRefreshableOutlookAccount(accountLike) {
+            const accountType = String(accountLike?.account_type || 'outlook').trim().toLowerCase();
+            const provider = String(accountLike?.provider || 'outlook').trim().toLowerCase();
+            return accountType !== 'imap' && provider === 'outlook';
+        }
+
         function formatSelectedItemsLabel(count) {
             return getUiLanguage() === 'en' ? `${count} selected` : `已选 ${count} 项`;
         }
@@ -540,6 +546,9 @@
                         const accounts = accData.success ? (accData.accounts || []) : [];
                         totalAccounts += accounts.length;
                         accounts.forEach(a => {
+                            if (!isRefreshableOutlookAccount(a)) {
+                                return;
+                            }
                             if (a.last_refresh_status === 'failed') expiredTokens++;
                             else validTokens++;
                         });
@@ -1150,11 +1159,78 @@
             }, duration);
         }
 
+        function buildRefreshErrorSuggestions({ accountType, provider, errorMessage }) {
+            const language = getUiLanguage();
+            const normalizedAccountType = String(accountType || 'outlook').trim().toLowerCase();
+            const normalizedProvider = String(provider || 'outlook').trim().toLowerCase();
+            const normalizedErrorMessage = String(errorMessage || '').trim();
+            const looksLikeTokenRefreshError = /aadsts|refresh[_\s-]?token|invalid[_\s-]?grant|expired/i.test(normalizedErrorMessage);
+
+            if (normalizedAccountType === 'imap') {
+                if (normalizedProvider === 'gmail') {
+                    return language === 'en'
+                        ? [
+                            'Confirm IMAP is enabled and use an app password instead of your normal account password.',
+                            'If this looks like an old Outlook token-refresh error, switch the account to IMAP credentials and save again.',
+                            'Re-check the IMAP host, port, and SSL settings before retrying.',
+                        ]
+                        : [
+                            '请确认 Gmail 已开启 IMAP，并使用应用专用密码而不是普通登录密码。',
+                            '如果这里其实是旧的 Outlook token-refresh error，请把账号切回 IMAP 凭据后重新保存。',
+                            '请重新检查 IMAP 主机、端口和 SSL 配置后再重试。',
+                        ];
+                }
+
+                return language === 'en'
+                    ? [
+                        'Check the IMAP host, port, SSL/TLS, and account password settings.',
+                        'Confirm the mailbox provider allows IMAP login from third-party apps.',
+                        'If this error came from a migrated Outlook account, remove the old token-refresh settings and save the IMAP credentials again.',
+                    ]
+                    : [
+                        '请检查 IMAP 主机、端口、SSL/TLS 和账号密码配置是否正确。',
+                        '请确认当前邮箱服务商允许第三方客户端通过 IMAP 登录。',
+                        '如果这是从旧 Outlook 账号迁移过来的异常，请清理旧的刷新 Token 配置并重新保存 IMAP 凭据。',
+                    ];
+            }
+
+            if (looksLikeTokenRefreshError) {
+                return language === 'en'
+                    ? [
+                        'Check whether the Client ID and Refresh Token are complete and do not contain extra spaces.',
+                        'Use the "Get Refresh Token" flow again to generate a fresh authorization token.',
+                        'Confirm the Microsoft account or tenant permissions have not been revoked or expired.',
+                    ]
+                    : [
+                        '请检查 Client ID 和 Refresh Token 是否填写完整且没有多余空格。',
+                        '请重新使用“获取 Refresh Token”功能生成新的授权凭据。',
+                        '请确认 Microsoft 账号权限未被撤销，且租户策略没有使当前 Token 失效。',
+                    ];
+            }
+
+            return language === 'en'
+                ? [
+                    'Open the account editor and verify the saved Outlook authorization information.',
+                    'Retry the refresh after confirming network, proxy, and Microsoft service availability.',
+                    'If the problem persists, re-authorize the account to obtain a new Refresh Token.',
+                ]
+                : [
+                    '请打开账号编辑弹窗，确认当前保存的 Outlook 授权信息仍然有效。',
+                    '请检查网络、代理和 Microsoft 服务状态后再次尝试刷新。',
+                    '如果问题持续存在，请重新授权该账号并获取新的 Refresh Token。',
+                ];
+        }
+
         // 显示刷新错误信息
-        function showRefreshError(accountId, errorMessage, accountEmail) {
+        function showRefreshError(accountId, errorMessage, accountEmail, accountType = 'outlook', provider = 'outlook') {
             document.getElementById('refreshErrorModal').classList.add('show');
             document.getElementById('refreshErrorEmail').textContent = translateAppTextLocal(`账号：${accountEmail || '未知'}`);
             document.getElementById('refreshErrorMessage').textContent = translateAppTextLocal(errorMessage);
+            const suggestionsEl = document.getElementById('refreshErrorSuggestions');
+            const suggestions = buildRefreshErrorSuggestions({ accountType, provider, errorMessage });
+            if (suggestionsEl) {
+                suggestionsEl.innerHTML = suggestions.map(item => `<li>${escapeHtml(item)}</li>`).join('');
+            }
             document.getElementById('editAccountFromErrorBtn').onclick = function () {
                 hideRefreshErrorModal();
                 showEditAccountModal(accountId);

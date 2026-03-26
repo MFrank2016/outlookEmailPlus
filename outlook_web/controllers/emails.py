@@ -40,6 +40,27 @@ def _build_response_from_error_payload(error_payload: dict[str, Any]):
     )
 
 
+def _build_account_credential_decrypt_failed_response(account: dict[str, Any]):
+    credential_errors = account.get("_credential_errors") or []
+    if not credential_errors:
+        return None
+
+    fields = sorted({str(item.get("field") or "").strip() for item in credential_errors if item.get("field")})
+    details = {
+        "fields": fields,
+        "errors": credential_errors,
+    }
+    return build_error_response(
+        "ACCOUNT_CREDENTIAL_DECRYPT_FAILED",
+        "账号凭据解密失败，请重新保存该账号后重试",
+        message_en="Account credentials could not be decrypted. Re-save the account and try again.",
+        err_type="CredentialDecryptError",
+        status=500,
+        details=credential_errors,
+        extra={"details": details},
+    )
+
+
 # ==================== 邮件 API ====================
 
 
@@ -64,6 +85,11 @@ def api_get_emails(email_addr: str) -> Any:
 
     # PRD-00005 / FD-00005 / TDD-00005：按 account_type 路由分发（Outlook 链路保持原样，IMAP 走通用 IMAP 服务）
     account_type = (account.get("account_type") or "outlook").strip().lower()
+    if account_type != "imap":
+        decrypt_error_response = _build_account_credential_decrypt_failed_response(account)
+        if decrypt_error_response:
+            return decrypt_error_response
+
     if account_type == "imap":
         result = get_emails_imap_generic(
             email_addr=email_addr,
@@ -396,6 +422,11 @@ def api_extract_verification(email_addr: str) -> Any:
 
     # PRD-00005：IMAP 账号验证码提取走 IMAP（Generic）→ 详情 → extractor；Outlook 保持原 Graph→IMAP XOAUTH2 回退链
     account_type = (account.get("account_type") or "outlook").strip().lower()
+    if account_type != "imap":
+        decrypt_error_response = _build_account_credential_decrypt_failed_response(account)
+        if decrypt_error_response:
+            return decrypt_error_response
+
     if account_type == "imap":
         emails_result = get_emails_imap_generic(
             email_addr=email_addr,
