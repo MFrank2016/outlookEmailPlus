@@ -2137,19 +2137,23 @@ ${details}
             settings.email_notification_enabled = emailNotificationEnabled;
             settings.email_notification_recipient = emailNotificationRecipient;
 
-            // 简洁模式轮询独立配置
+            // 简洁模式轮询独立配置（容错：字段为空或无效时使用当前内存值，不阻断保存）
             const enableCompactPollEl  = document.getElementById('enableCompactAutoPoll');
             const cPollIntervalEl      = document.getElementById('compactPollInterval');
             const cPollMaxCountEl      = document.getElementById('compactPollMaxCount');
-            const enableCompactPoll    = enableCompactPollEl ? enableCompactPollEl.checked : false;
-            const cPollIntervalVal     = cPollIntervalEl    ? parseInt(cPollIntervalEl.value)    : NaN;
-            const cPollMaxCountVal     = cPollMaxCountEl    ? parseInt(cPollMaxCountEl.value)    : NaN;
+            const enableCompactPoll    = enableCompactPollEl ? enableCompactPollEl.checked : compactPollEnabled;
+            const cPollIntervalRaw     = cPollIntervalEl    ? parseInt(cPollIntervalEl.value) : NaN;
+            const cPollMaxCountRaw     = cPollMaxCountEl    ? parseInt(cPollMaxCountEl.value) : NaN;
 
-            if (isNaN(cPollIntervalVal) || cPollIntervalVal < 3 || cPollIntervalVal > 60) {
+            // 若字段有值则校验范围；为空/无效时回退到内存中的当前设置值
+            const cPollIntervalVal = isNaN(cPollIntervalRaw) ? compactPollInterval : cPollIntervalRaw;
+            const cPollMaxCountVal = isNaN(cPollMaxCountRaw) ? compactPollMaxCount  : cPollMaxCountRaw;
+
+            if (cPollIntervalVal < 3 || cPollIntervalVal > 60) {
                 showToast(translateAppTextLocal('简洁模式轮询间隔必须在 3-60 秒之间'), 'error');
                 return;
             }
-            if (isNaN(cPollMaxCountVal) || cPollMaxCountVal < 0 || cPollMaxCountVal > 100) {
+            if (cPollMaxCountVal < 0 || cPollMaxCountVal > 100) {
                 showToast(translateAppTextLocal('简洁模式轮询次数必须在 0-100 之间（0 表示持续轮询）'), 'error');
                 return;
             }
