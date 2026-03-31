@@ -8,9 +8,8 @@ from flask import jsonify, request
 from outlook_web.audit import log_audit
 from outlook_web.db import get_db
 from outlook_web.errors import build_error_response
-from outlook_web.repositories import temp_emails as temp_emails_repo
 from outlook_web.security.auth import login_required
-from outlook_web.services import gptmail
+from outlook_web.services.temp_mail_service import TempMailError, get_temp_mail_service
 from outlook_web.services.temp_email_content import (
     build_inline_resource_map,
     load_temp_email_payload,
@@ -18,6 +17,18 @@ from outlook_web.services.temp_email_content import (
 )
 
 logger = logging.getLogger(__name__)
+temp_mail_service = get_temp_mail_service()
+
+
+def _parse_bool_flag(value: Any, default: bool = False) -> bool:
+    """解析请求中的布尔开关，兼容 bool / 数字 / 字符串。"""
+    if value is None:
+        return default
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return bool(value)
+    return str(value).strip().lower() in {"1", "true", "yes", "on"}
 
 
 # ==================== 临时邮箱 API ====================
@@ -45,8 +56,22 @@ def _should_refresh_temp_email_detail(msg: dict[str, Any] | None) -> bool:
 @login_required
 def api_get_temp_emails() -> Any:
     """获取所有临时邮箱"""
-    emails = temp_emails_repo.load_temp_emails()
+    emails = temp_mail_service.list_user_mailboxes()
     return jsonify({"success": True, "emails": emails})
+
+
+@login_required
+def api_get_temp_email_options() -> Any:
+    try:
+        options = temp_mail_service.get_options()
+        return jsonify({"success": True, "options": options})
+    except TempMailError as exc:
+        return build_error_response(
+            exc.code,
+            exc.message,
+            status=exc.status,
+            message_en="Temp mail options are unavailable",
+        )
 
 
 @login_required
@@ -55,49 +80,53 @@ def api_generate_temp_email() -> Any:
     data = request.json or {}
     prefix = data.get("prefix")
     domain = data.get("domain")
-
-    # 调用改进后的 generate_temp_email，返回 (email_addr, error_msg)
-    email_addr, error_msg = gptmail.generate_temp_email(prefix, domain)
-
-    if email_addr:
-        # 成功生成邮箱地址
-        if temp_emails_repo.add_temp_email(email_addr):
-            log_audit("create", "temp_email", email_addr, "生成临时邮箱")
-            logger.info(f"临时邮箱生成成功: {email_addr}")
-            try:
-                from outlook_web.repositories import settings as settings_repo
-                from outlook_web.services import notification_dispatch
-
-                if settings_repo.get_setting("email_notification_enabled", "false").lower() == "true":
-                    notification_state_cursor = notification_dispatch.utc_now_iso()
-                    from outlook_web.repositories import notification_state as notification_state_repo
-
-                    notification_state_repo.upsert_cursor(
-                        notification_dispatch.CHANNEL_EMAIL,
-                        notification_dispatch.SOURCE_TEMP_EMAIL,
-                        notification_dispatch.build_source_key(notification_dispatch.SOURCE_TEMP_EMAIL, email_addr),
-                        notification_state_cursor,
-                    )
-            except Exception:
-                pass
-            return jsonify(
-                {
-                    "success": True,
-                    "email": email_addr,
-                    "message": "临时邮箱创建成功",
-                    "message_en": "Temp mailbox created successfully",
-                }
+    provider_name = str(data.get("provider_name") or "").strip() or None
+    try:
+        mailbox = temp_mail_service.generate_user_mailbox(
+            prefix=prefix, domain=domain, provider_name=provider_name
+        )
+        email_addr = mailbox["email"]
+        log_audit("create", "temp_email", email_addr, "生成临时邮箱")
+        logger.info(f"临时邮箱生成成功: {email_addr}")
+        try:
+            from outlook_web.repositories import (
+                notification_state as notification_state_repo,
             )
-        else:
-            logger.warning(f"临时邮箱已存在: {email_addr}")
-            return build_error_response("TEMP_EMAIL_EXISTS", "邮箱已存在", message_en="Mailbox already exists")
-    else:
-        # 生成失败，返回详细错误信息
-        logger.error(f"临时邮箱生成失败: {error_msg}, prefix={prefix}, domain={domain}")
+            from outlook_web.repositories import settings as settings_repo
+            from outlook_web.services import notification_dispatch
+
+            if (
+                settings_repo.get_setting("email_notification_enabled", "false").lower()
+                == "true"
+            ):
+                notification_state_cursor = notification_dispatch.utc_now_iso()
+                notification_state_repo.upsert_cursor(
+                    notification_dispatch.CHANNEL_EMAIL,
+                    notification_dispatch.SOURCE_TEMP_EMAIL,
+                    notification_dispatch.build_source_key(
+                        notification_dispatch.SOURCE_TEMP_EMAIL, email_addr
+                    ),
+                    notification_state_cursor,
+                )
+        except Exception:
+            pass
+        return jsonify(
+            {
+                "success": True,
+                "email": email_addr,
+                "mailbox": mailbox,
+                "message": "临时邮箱创建成功",
+                "message_en": "Temp mailbox created successfully",
+            }
+        )
+    except TempMailError as exc:
+        logger.error(
+            f"临时邮箱生成失败: {exc.message}, prefix={prefix}, domain={domain}"
+        )
         return build_error_response(
-            "TEMP_EMAIL_CREATE_FAILED",
-            error_msg or "生成临时邮箱失败，请稍后重试",
-            status=502,
+            exc.code,
+            exc.message,
+            status=exc.status,
             message_en="Failed to create temp mailbox. Please try again later",
         )
 
@@ -105,63 +134,85 @@ def api_generate_temp_email() -> Any:
 @login_required
 def api_delete_temp_email(email_addr: str) -> Any:
     """删除临时邮箱"""
-    if temp_emails_repo.delete_temp_email(email_addr):
+    try:
+        temp_mail_service.delete_mailbox(email_addr)
         log_audit("delete", "temp_email", email_addr, "删除临时邮箱")
-        return jsonify({"success": True, "message": "临时邮箱已删除", "message_en": "Temp mailbox deleted"})
-    return build_error_response("TEMP_EMAIL_DELETE_FAILED", "删除失败", status=500, message_en="Failed to delete temp mailbox")
+        return jsonify(
+            {
+                "success": True,
+                "message": "临时邮箱已删除",
+                "message_en": "Temp mailbox deleted",
+            }
+        )
+    except TempMailError as exc:
+        return build_error_response(
+            exc.code,
+            exc.message,
+            status=exc.status,
+            message_en="Failed to delete temp mailbox",
+        )
 
 
 @login_required
 def api_get_temp_email_messages(email_addr: str) -> Any:
     """获取临时邮箱的邮件列表"""
-    api_messages = gptmail.get_temp_emails_from_api(email_addr)
-
-    if api_messages:
-        temp_emails_repo.save_temp_email_messages(email_addr, api_messages)
-
-    messages = temp_emails_repo.get_temp_email_messages(email_addr)
-
-    formatted = []
-    for msg in messages:
-        formatted.append(
+    try:
+        sync_remote = _parse_bool_flag(request.args.get("sync_remote"), default=True)
+        mailbox = temp_mail_service.get_mailbox(email_addr, view="descriptor")
+        messages = temp_mail_service.list_messages(mailbox, sync_remote=sync_remote)
+        formatted = [
             {
-                "id": msg.get("message_id"),
+                "id": msg.get("id"),
                 "from": msg.get("from_address", "未知"),
                 "subject": msg.get("subject", "无主题"),
-                "body_preview": (msg.get("content", "") or "")[:200],
+                "body_preview": msg.get("content_preview", ""),
                 "date": msg.get("created_at", ""),
                 "timestamp": msg.get("timestamp", 0),
-                "has_html": msg.get("has_html", 0),
+                "has_html": 1 if msg.get("has_html") else 0,
+            }
+            for msg in messages
+        ]
+        provider_name = str(mailbox.get("provider_name") or "").strip() or "temp_mail"
+        return jsonify(
+            {
+                "success": True,
+                "emails": formatted,
+                "count": len(formatted),
+                "method": "Temp Mail",
+                "provider": provider_name,
             }
         )
-
-    return jsonify(
-        {
-            "success": True,
-            "emails": formatted,
-            "count": len(formatted),
-            "method": "GPTMail",
-        }
-    )
+    except TempMailError as exc:
+        return build_error_response(
+            exc.code,
+            exc.message,
+            status=exc.status,
+            message_en="Failed to fetch messages",
+        )
 
 
 @login_required
 def api_get_temp_email_message_detail(email_addr: str, message_id: str) -> Any:
     """获取临时邮件详情"""
-    msg = temp_emails_repo.get_temp_email_message_by_id(message_id)
+    try:
+        refresh_if_missing = _parse_bool_flag(
+            request.args.get("refresh_if_missing"), default=True
+        )
+        msg = temp_mail_service.get_cached_message_row(email_addr, message_id)
+        if refresh_if_missing and _should_refresh_temp_email_detail(msg):
+            detail = temp_mail_service.refresh_message_detail(email_addr, message_id)
+            msg = temp_mail_service.get_cached_message_row(email_addr, message_id)
+        else:
+            detail = temp_mail_service.get_message_detail(
+                email_addr,
+                message_id,
+                refresh_if_missing=refresh_if_missing,
+            )
 
-    if _should_refresh_temp_email_detail(msg):
-        api_msg = gptmail.get_temp_email_detail_from_api(message_id)
-        if api_msg:
-            temp_emails_repo.save_temp_email_messages(email_addr, [api_msg])
-            msg = temp_emails_repo.get_temp_email_message_by_id(message_id) or msg
-
-    if msg:
-        has_html = bool(msg.get("has_html") or msg.get("html_content"))
-        body = msg.get("html_content") if has_html else msg.get("content", "")
-        raw_payload = load_temp_email_payload(msg.get("raw_content"))
+        raw_payload = load_temp_email_payload((msg or {}).get("raw_content"))
         inline_resources = build_inline_resource_map(raw_payload)
-
+        has_html = bool(detail.get("has_html") or detail.get("html_content"))
+        body = detail.get("html_content") if has_html else detail.get("content", "")
         if has_html and inline_resources:
             body = rewrite_html_with_inline_resources(body or "", inline_resources)
 
@@ -169,96 +220,142 @@ def api_get_temp_email_message_detail(email_addr: str, message_id: str) -> Any:
             {
                 "success": True,
                 "email": {
-                    "id": msg.get("message_id"),
-                    "from": msg.get("from_address", "未知"),
+                    "id": detail.get("id"),
+                    "from": detail.get("from_address", "未知"),
                     "to": email_addr,
-                    "subject": msg.get("subject", "无主题"),
+                    "subject": detail.get("subject", "无主题"),
                     "body": body,
                     "body_type": "html" if has_html else "text",
-                    "date": msg.get("created_at", ""),
-                    "timestamp": msg.get("timestamp", 0),
+                    "date": detail.get("created_at", ""),
+                    "timestamp": detail.get("timestamp", 0),
                     "inline_resources": inline_resources,
                 },
             }
         )
-    return build_error_response("TEMP_EMAIL_MESSAGE_NOT_FOUND", "邮件不存在", status=404, message_en="Message not found")
+    except TempMailError as exc:
+        message_en = (
+            "Message not found"
+            if exc.status == 404
+            else "Failed to fetch message detail"
+        )
+        return build_error_response(
+            exc.code, exc.message, status=exc.status, message_en=message_en
+        )
+
+
+@login_required
+def api_extract_temp_email_verification(email_addr: str) -> Any:
+    try:
+        result = temp_mail_service.extract_verification(email_addr)
+        return jsonify({"success": True, "data": result, "message": "提取成功"})
+    except TempMailError as exc:
+        message_en = (
+            "Verification info not found"
+            if exc.status == 404
+            else "Failed to extract verification info"
+        )
+        return build_error_response(
+            exc.code, exc.message, status=exc.status, message_en=message_en
+        )
 
 
 @login_required
 def api_delete_temp_email_message(email_addr: str, message_id: str) -> Any:
     """删除临时邮件"""
-    gptmail.delete_temp_email_from_api(message_id)
-    if temp_emails_repo.delete_temp_email_message(message_id):
+    try:
+        temp_mail_service.delete_message(email_addr, message_id)
         log_audit(
             "delete",
             "temp_email_message",
             message_id,
             f"删除临时邮件（email={email_addr}）",
         )
-        return jsonify({"success": True, "message": "邮件已删除", "message_en": "Message deleted"})
-    return build_error_response(
-        "TEMP_EMAIL_MESSAGE_DELETE_FAILED", "删除失败", status=500, message_en="Failed to delete message"
-    )
+        return jsonify(
+            {"success": True, "message": "邮件已删除", "message_en": "Message deleted"}
+        )
+    except TempMailError as exc:
+        return build_error_response(
+            exc.code,
+            exc.message,
+            status=exc.status,
+            message_en="Failed to delete message",
+        )
 
 
 @login_required
 def api_clear_temp_email_messages(email_addr: str) -> Any:
     """清空临时邮箱的所有邮件"""
-    gptmail.clear_temp_emails_from_api(email_addr)
-    db = get_db()
     try:
+        db = get_db()
         row = db.execute(
             "SELECT COUNT(*) as c FROM temp_email_messages WHERE email_address = ?",
             (email_addr,),
         ).fetchone()
         deleted_count = row["c"] if row else 0
-        db.execute("DELETE FROM temp_email_messages WHERE email_address = ?", (email_addr,))
-        db.commit()
+        temp_mail_service.clear_messages(email_addr)
         log_audit(
             "delete",
             "temp_email_messages",
             email_addr,
             f"清空临时邮箱邮件（count={deleted_count}）",
         )
-        return jsonify({"success": True, "message": "邮件已清空", "message_en": "Messages cleared"})
+        return jsonify(
+            {"success": True, "message": "邮件已清空", "message_en": "Messages cleared"}
+        )
+    except TempMailError as exc:
+        return build_error_response(
+            exc.code,
+            exc.message,
+            status=exc.status,
+            message_en="Failed to clear messages",
+        )
     except Exception:
         return build_error_response(
-            "TEMP_EMAIL_MESSAGES_CLEAR_FAILED", "清空失败", status=500, message_en="Failed to clear messages"
+            "TEMP_EMAIL_MESSAGES_CLEAR_FAILED",
+            "清空失败",
+            status=500,
+            message_en="Failed to clear messages",
         )
 
 
 @login_required
 def api_refresh_temp_email_messages(email_addr: str) -> Any:
     """刷新临时邮箱的邮件"""
-    api_messages = gptmail.get_temp_emails_from_api(email_addr)
-
-    if api_messages is not None:
-        saved = temp_emails_repo.save_temp_email_messages(email_addr, api_messages)
-        messages = temp_emails_repo.get_temp_email_messages(email_addr)
-
-        formatted = []
-        for msg in messages:
-            formatted.append(
-                {
-                    "id": msg.get("message_id"),
-                    "from": msg.get("from_address", "未知"),
-                    "subject": msg.get("subject", "无主题"),
-                    "body_preview": (msg.get("content", "") or "")[:200],
-                    "date": msg.get("created_at", ""),
-                    "timestamp": msg.get("timestamp", 0),
-                    "has_html": msg.get("has_html", 0),
-                }
-            )
-
+    try:
+        mailbox = temp_mail_service.get_mailbox(email_addr, view="descriptor")
+        existing_ids = {
+            item.get("id")
+            for item in temp_mail_service.list_messages(mailbox, sync_remote=False)
+        }
+        messages = temp_mail_service.list_messages(mailbox, sync_remote=True)
+        formatted = [
+            {
+                "id": msg.get("id"),
+                "from": msg.get("from_address", "未知"),
+                "subject": msg.get("subject", "无主题"),
+                "body_preview": msg.get("content_preview", ""),
+                "date": msg.get("created_at", ""),
+                "timestamp": msg.get("timestamp", 0),
+                "has_html": 1 if msg.get("has_html") else 0,
+            }
+            for msg in messages
+        ]
+        new_count = len([msg for msg in messages if msg.get("id") not in existing_ids])
+        provider_name = str(mailbox.get("provider_name") or "").strip() or "temp_mail"
         return jsonify(
             {
                 "success": True,
                 "emails": formatted,
                 "count": len(formatted),
-                "new_count": saved,
-                "method": "GPTMail",
+                "new_count": new_count,
+                "method": "Temp Mail",
+                "provider": provider_name,
             }
         )
-    return build_error_response(
-        "TEMP_EMAIL_MESSAGES_FETCH_FAILED", "获取邮件失败", status=502, message_en="Failed to fetch messages"
-    )
+    except TempMailError as exc:
+        return build_error_response(
+            exc.code,
+            exc.message,
+            status=exc.status,
+            message_en="Failed to fetch messages",
+        )

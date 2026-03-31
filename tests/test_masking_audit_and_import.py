@@ -41,8 +41,9 @@ class MaskingAuditAndImportTests(unittest.TestCase):
         settings = data.get("settings") or {}
         self.assertNotIn("login_password", settings)
         self.assertNotIn("gptmail_api_key", settings)
+        self.assertNotIn("gptmail_api_key_set", settings)
         self.assertIn("login_password_set", settings)
-        self.assertIn("gptmail_api_key_set", settings)
+        self.assertIn("temp_mail_api_key_set", settings)
 
     def test_account_get_does_not_return_password_or_refresh_token(self):
         unique = uuid.uuid4().hex
@@ -210,8 +211,8 @@ class MaskingAuditAndImportTests(unittest.TestCase):
         unique = uuid.uuid4().hex
         email_addr = f"tmp_{unique}@example.com"
 
-        # Mock generate_temp_email 返回元组 (email_addr, None)
-        # 注意：控制器现在直接使用 gptmail service，需要 mock outlook_web.services.gptmail
+        # Mock legacy bridge 返回元组 (email_addr, None)
+        # 当前正式入口经 temp mail provider 间接调用兼容 bridge，因此这里仍 patch gptmail 模块。
         from outlook_web.services import gptmail as gptmail_service
 
         with patch.object(gptmail_service, "generate_temp_email", return_value=(email_addr, None)):

@@ -10,6 +10,9 @@ from outlook_web.services.http import get_response_details
 # Token 端点
 TOKEN_URL_GRAPH = "https://login.microsoftonline.com/common/oauth2/v2.0/token"
 
+# Graph API 返回 401 时表示账号授权失效（与 token endpoint 失败不同）
+GRAPH_AUTH_EXPIRED_STATUS = 401
+
 
 def build_proxies(proxy_url: str) -> Optional[Dict[str, str]]:
     """构建 requests 的 proxies 参数"""
@@ -18,7 +21,9 @@ def build_proxies(proxy_url: str) -> Optional[Dict[str, str]]:
     return {"http": proxy_url, "https": proxy_url}
 
 
-def get_access_token_graph_result(client_id: str, refresh_token: str, proxy_url: str = None) -> Dict[str, Any]:
+def get_access_token_graph_result(
+    client_id: str, refresh_token: str, proxy_url: str = None
+) -> Dict[str, Any]:
     """获取 Graph API access_token（包含错误详情）"""
     try:
         proxies = build_proxies(proxy_url)
@@ -63,7 +68,11 @@ def get_access_token_graph_result(client_id: str, refresh_token: str, proxy_url:
 
         # 根据 Microsoft Learn 文档：refresh token 可能会在每次使用时“自我替换”，应保存新的 refresh_token（如有）。
         new_refresh_token = payload.get("refresh_token")
-        return {"success": True, "access_token": access_token, "refresh_token": new_refresh_token}
+        return {
+            "success": True,
+            "access_token": access_token,
+            "refresh_token": new_refresh_token,
+        }
     except Exception as exc:
         return {
             "success": False,
@@ -77,7 +86,9 @@ def get_access_token_graph_result(client_id: str, refresh_token: str, proxy_url:
         }
 
 
-def get_access_token_graph(client_id: str, refresh_token: str, proxy_url: str = None) -> Optional[str]:
+def get_access_token_graph(
+    client_id: str, refresh_token: str, proxy_url: str = None
+) -> Optional[str]:
     """获取 Graph API access_token"""
     result = get_access_token_graph_result(client_id, refresh_token, proxy_url)
     if result.get("success"):
@@ -122,12 +133,15 @@ def get_emails_graph(
         }
 
         proxies = build_proxies(proxy_url)
-        res = requests.get(url, headers=headers, params=params, timeout=30, proxies=proxies)
+        res = requests.get(
+            url, headers=headers, params=params, timeout=30, proxies=proxies
+        )
 
         if res.status_code != 200:
             details = get_response_details(res)
             return {
                 "success": False,
+                "auth_expired": res.status_code == GRAPH_AUTH_EXPIRED_STATUS,
                 "error": build_error_payload(
                     "EMAIL_FETCH_FAILED",
                     "获取邮件失败，请检查账号配置",
@@ -137,7 +151,11 @@ def get_emails_graph(
                 ),
             }
 
-        return {"success": True, "emails": res.json().get("value", [])}
+        return {
+            "success": True,
+            "emails": res.json().get("value", []),
+            "new_refresh_token": token_result.get("refresh_token"),
+        }
     except Exception as exc:
         return {
             "success": False,
@@ -173,7 +191,9 @@ def get_email_detail_graph(
         }
 
         proxies = build_proxies(proxy_url)
-        res = requests.get(url, headers=headers, params=params, timeout=30, proxies=proxies)
+        res = requests.get(
+            url, headers=headers, params=params, timeout=30, proxies=proxies
+        )
 
         if res.status_code != 200:
             return None
@@ -212,9 +232,13 @@ def get_email_raw_graph(
         return None
 
 
-def test_refresh_token(client_id: str, refresh_token: str, proxy_url: str = None) -> tuple[bool, str | None]:
+def test_refresh_token(
+    client_id: str, refresh_token: str, proxy_url: str = None
+) -> tuple[bool, str | None]:
     """测试 refresh token 是否有效，返回 (是否成功, 错误信息)"""
-    ok, err, _new_refresh_token = test_refresh_token_with_rotation(client_id, refresh_token, proxy_url)
+    ok, err, _new_refresh_token = test_refresh_token_with_rotation(
+        client_id, refresh_token, proxy_url
+    )
     return ok, err
 
 
@@ -299,7 +323,9 @@ def delete_emails_graph(
 
         batch_requests = []
         for idx, msg_id in enumerate(batch):
-            batch_requests.append({"id": str(idx), "method": "DELETE", "url": f"/me/messages/{msg_id}"})
+            batch_requests.append(
+                {"id": str(idx), "method": "DELETE", "url": f"/me/messages/{msg_id}"}
+            )
 
         try:
             proxies = build_proxies(proxy_url)
@@ -319,7 +345,9 @@ def delete_emails_graph(
                     else:
                         failed_count += 1
                         try:
-                            errors.append(f"Msg ID: {batch[int(res['id'])]}, Status: {res.get('status')}")
+                            errors.append(
+                                f"Msg ID: {batch[int(res['id'])]}, Status: {res.get('status')}"
+                            )
                         except Exception:
                             errors.append(f"Status: {res.get('status')}")
             else:

@@ -7,7 +7,7 @@ from outlook_web.services import gptmail
 
 
 class TestGPTMailErrorHandling(unittest.TestCase):
-    """测试 GPTMail 服务的错误处理"""
+    """测试 legacy 临时邮箱 bridge 的错误处理"""
 
     def test_gptmail_request_no_api_key(self):
         """测试 API Key 未配置的情况"""
@@ -97,9 +97,9 @@ class TestGPTMailErrorHandling(unittest.TestCase):
         """测试 API Key 未配置时生成临时邮箱"""
         mock_result = {
             "success": False,
-            "error": "GPTMail API Key 未配置",
+            "error": "临时邮箱 API Key 未配置",
             "error_type": "CONFIG_ERROR",
-            "details": "请在系统设置中配置 GPTMail API Key",
+            "details": "请在系统设置中配置临时邮箱 API Key",
         }
 
         with patch("outlook_web.services.gptmail.gptmail_request", return_value=mock_result):

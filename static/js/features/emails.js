@@ -80,16 +80,6 @@
                     document.getElementById('emailCount').textContent = `(${data.emails.length})`;
 
                     renderEmailList(data.emails);
-
-                    // 初始化已知邮件ID集合（用于轮询检测新邮件）
-                    if (typeof knownEmailIds !== 'undefined') {
-                        knownEmailIds = new Set(currentEmails.map(e => e.id));
-                    }
-
-                    // 检查是否需要自动开始轮询
-                    if (typeof syncPollingForCurrentAccount === 'function') {
-                        syncPollingForCurrentAccount();
-                    }
                 } else {
                     // 显示详细的多方法失败弹框
                     if (data.details) {
@@ -197,6 +187,153 @@
             }
         }
 
+        function isTempEmailSource(source) {
+            const normalizedSource = String(source || '').trim().toLowerCase();
+            return normalizedSource === 'temp' || normalizedSource === 'temp-mail' || normalizedSource === 'temp_mail';
+        }
+
+        function resolveEmailDetailSource(options = {}) {
+            if (isTempEmailSource(options?.source)) {
+                return 'temp';
+            }
+            return isTempEmailGroup || currentPage === 'temp-emails' ? 'temp' : 'mailbox';
+        }
+
+        function getEmailDetailRefs(options = {}) {
+            const source = resolveEmailDetailSource(options);
+            if (source === 'temp') {
+                return {
+                    source,
+                    section: document.getElementById('tempEmailDetailSection'),
+                    toolbar: document.getElementById('tempEmailDetailToolbar'),
+                    container: document.getElementById('tempEmailDetail'),
+                    trustCheckbox: document.getElementById('tempEmailTrustCheckbox'),
+                    iframeId: 'tempEmailBodyFrame',
+                };
+            }
+
+            return {
+                source,
+                section: document.getElementById('emailDetailSection'),
+                toolbar: document.getElementById('emailDetailToolbar'),
+                container: document.getElementById('emailDetail'),
+                trustCheckbox: document.getElementById('trustEmailCheckbox'),
+                iframeId: 'emailBodyFrame',
+            };
+        }
+
+        function showEmailDetailContainer(options = {}) {
+            const refs = getEmailDetailRefs(options);
+            if (refs.source === 'mailbox') {
+                if (typeof showEmailDetailSection === 'function') {
+                    showEmailDetailSection();
+                }
+                return;
+            }
+            if (refs.section) {
+                refs.section.style.display = 'flex';
+            }
+        }
+
+        function hideEmailDetailContainer(options = {}) {
+            const refs = getEmailDetailRefs(options);
+            if (refs.source === 'mailbox') {
+                if (typeof hideEmailDetailSection === 'function') {
+                    hideEmailDetailSection();
+                }
+                return;
+            }
+            if (refs.section) {
+                refs.section.style.display = 'flex';
+            }
+        }
+
+        function setEmailDetailToolbarVisibility(visible, options = {}) {
+            const refs = getEmailDetailRefs(options);
+            if (visible) {
+                showEmailDetailContainer(options);
+            }
+            if (refs.toolbar) {
+                refs.toolbar.style.display = visible ? 'flex' : 'none';
+            }
+        }
+
+        function resetEmailDetailState(options = {}) {
+            const refs = getEmailDetailRefs(options);
+            if (refs.container) {
+                refs.container.innerHTML = `
+                    <div class="empty-state">
+                        <span class="empty-icon">📄</span>
+                        <p>${translateAppTextLocal('选择一封邮件查看详情')}</p>
+                    </div>
+                `;
+            }
+            if (refs.trustCheckbox) {
+                refs.trustCheckbox.checked = false;
+            }
+            setEmailDetailToolbarVisibility(false, options);
+        }
+
+        function buildDetailVerificationOptions(options = {}) {
+            return resolveEmailDetailSource(options) === 'temp'
+                ? { ...options, source: 'temp' }
+                : { ...options, source: 'mailbox' };
+        }
+
+        function extractVerificationFallbackFromDetail(options = {}) {
+            const refs = getEmailDetailRefs(options);
+            const iframe = refs.container ? refs.container.querySelector('.email-body-frame') : null;
+            const textBody = refs.container ? refs.container.querySelector('.email-body-text') : null;
+
+            let bodyText = '';
+            if (iframe && iframe.contentDocument && iframe.contentDocument.body) {
+                bodyText = iframe.contentDocument.body.innerText || iframe.contentDocument.body.textContent || '';
+            } else if (textBody) {
+                bodyText = textBody.textContent || '';
+            }
+
+            if (!bodyText.trim()) {
+                return null;
+            }
+
+            const codePatterns = [
+                /(?:验证码|verification code|code|码|PIN|OTP|密码)[：:\s]*([A-Za-z0-9]{4,8})/i,
+                /\b(\d{4,8})\b/,
+                /(?:code|码)[：:\s]*([A-Za-z0-9-]{4,12})/i,
+            ];
+            const urlPattern = /https?:\/\/[^\s<>"')\]]+/gi;
+            const urls = bodyText.match(urlPattern) || [];
+            const filteredUrls = urls.filter(u => !u.includes('unsubscribe') && !u.includes('privacy') && !u.includes('terms'));
+
+            let code = '';
+            for (const pattern of codePatterns) {
+                const match = bodyText.match(pattern);
+                if (match && match[1]) {
+                    code = match[1];
+                    break;
+                }
+            }
+
+            let formatted = '';
+            if (code) formatted += `验证码: ${code}`;
+            if (filteredUrls.length > 0) {
+                if (formatted) formatted += '\n';
+                formatted += `链接: ${filteredUrls[0]}`;
+            }
+
+            if (!formatted) {
+                return null;
+            }
+
+            return {
+                verification_code: code,
+                verification_link: filteredUrls[0] || '',
+                formatted,
+                copyText: code || filteredUrls[0] || formatted,
+                displayValue: code || filteredUrls[0] || formatted,
+            };
+        }
+
         async function confirmBatchDeleteEmails() {
             if (selectedEmailIds.size === 0) return;
 
@@ -211,6 +348,11 @@
             if (!currentEmailDetail || !currentEmailDetail.id) return;
 
             if (!confirm('确定要永久删除这封邮件吗？此操作不可恢复！')) {
+                return;
+            }
+
+            if (resolveEmailDetailSource() === 'temp') {
+                await deleteCurrentTempEmailMessage();
                 return;
             }
 
@@ -244,12 +386,13 @@
 
                     // If current viewed email was deleted, clear view
                     if (currentEmailDetail && deletedIds.has(currentEmailDetail.id)) {
-                        document.getElementById('emailDetail').innerHTML = `
+                        const refs = getEmailDetailRefs({ source: 'mailbox' });
+                        refs.container.innerHTML = `
                             <div class="empty-state">
                                 <span class="empty-icon">🗑️</span><p>邮件已删除</p>
                             </div>
                         `;
-                        document.getElementById('emailDetailToolbar').style.display = 'none';
+                        setEmailDetailToolbarVisibility(false, { source: 'mailbox' });
                     }
 
                     // If errors
@@ -269,28 +412,68 @@
             }
         }
 
+        async function deleteCurrentTempEmailMessage() {
+            if (!currentEmailDetail || !currentEmailDetail.id || !currentAccount) {
+                return;
+            }
+
+            showToast('正在删除...', 'info');
+
+            try {
+                const response = await fetch(
+                    `/api/temp-emails/${encodeURIComponent(currentAccount)}/messages/${encodeURIComponent(currentEmailDetail.id)}`,
+                    { method: 'DELETE' }
+                );
+                const result = await response.json();
+
+                if (!result.success) {
+                    handleApiError(result, '删除失败');
+                    return;
+                }
+
+                const deletedId = currentEmailDetail.id;
+                currentEmails = currentEmails.filter(email => email.id !== deletedId);
+                currentEmailDetail = null;
+                renderEmailList(currentEmails);
+
+                const tempContainer = document.getElementById('tempEmailMessageList');
+                if (tempContainer && typeof renderTempEmailMessageList === 'function') {
+                    renderTempEmailMessageList(tempContainer, currentEmails);
+                }
+
+                const emailCount = document.getElementById('emailCount');
+                if (emailCount) {
+                    emailCount.textContent = `(${currentEmails.length})`;
+                }
+
+                resetEmailDetailState({ source: 'temp' });
+                showToast(translateAppTextLocal('邮件已删除'), 'success');
+            } catch (error) {
+                console.error('删除临时邮件失败:', error);
+                showToast(translateAppTextLocal('网络错误，请重试'), 'error');
+            }
+        }
+
         // 选择邮件
         async function selectEmail(messageId, index) {
             document.querySelectorAll('.email-item').forEach((item, i) => {
                 item.classList.toggle('active', i === index);
             });
 
-            // Show email detail section (new layout)
-            if (typeof showEmailDetailSection === 'function') {
-                showEmailDetailSection();
-            }
-
             // 这里不重置 currentEmailDetail，等到 fetch 成功后再设置
 
             // 重置信任模式
-            document.getElementById('trustEmailCheckbox').checked = false;
+            const refs = getEmailDetailRefs({ source: 'mailbox' });
+            if (refs.trustCheckbox) {
+                refs.trustCheckbox.checked = false;
+            }
             isTrustedMode = false;
 
             // 显示工具栏
-            document.getElementById('emailDetailToolbar').style.display = 'flex';
+            setEmailDetailToolbarVisibility(true, { source: 'mailbox' });
 
             // 加载邮件详情
-            const container = document.getElementById('emailDetail');
+            const container = refs.container;
             container.innerHTML = '<div class="loading-overlay"><span class="spinner"></span></div>';
 
             try {
@@ -300,7 +483,7 @@
                 if (data.success) {
                     currentEmailDetail = data.email;
                     try {
-                        renderEmailDetail(data.email);
+                        renderEmailDetail(data.email, { source: 'mailbox' });
                     } catch (renderError) {
                         console.error('渲染邮件详情失败:', renderError);
                         // 渲染失败时回退为纯文本显示
@@ -380,15 +563,20 @@
             }
         }
 
-        function renderEmailDetail(email) {
-            const container = document.getElementById('emailDetail');
+        function renderEmailDetail(email, options = {}) {
+            const refs = getEmailDetailRefs(options);
+            const container = refs.container;
+            if (!container) {
+                return;
+            }
             const rawBody = typeof email.body === 'string' ? email.body : '';
+            const iframeId = refs.iframeId;
 
             const isHtml = email.body_type === 'html' ||
                 (rawBody && (rawBody.includes('<html') || rawBody.includes('<div') || rawBody.includes('<p>')));
 
             const bodyContent = isHtml
-                ? `<iframe id="emailBodyFrame" sandbox="allow-same-origin" onload="adjustIframeHeight(this)"></iframe>`
+                ? `<iframe id="${iframeId}" class="email-body-frame" sandbox="allow-same-origin" onload="adjustIframeHeight(this)"></iframe>`
                 : `<div class="email-body-text">${escapeHtml(rawBody)}</div>`;
 
             container.innerHTML = `
@@ -422,7 +610,7 @@
 
             // 如果是 HTML 内容，设置 iframe 内容
             if (isHtml) {
-                const iframe = document.getElementById('emailBodyFrame');
+                const iframe = container.querySelector(`#${iframeId}`) || container.querySelector('.email-body-frame');
                 if (iframe) {
                     const renderableBody = rewriteEmailInlineImages(rawBody, email);
                     let sanitizedBody;
@@ -553,94 +741,32 @@
 
         // ==================== 验证码提取（从邮件详情） ====================
 
-        function extractVerificationFromDetail(buttonElement) {
-            const originalContent = buttonElement.innerHTML;
-            buttonElement.disabled = true;
-            buttonElement.innerHTML = '⏳';
-            buttonElement.style.opacity = '0.6';
-
-            try {
-                // 获取邮件正文文本
-                let bodyText = '';
-                const emailDetail = document.getElementById('emailDetail');
-                const iframe = emailDetail ? emailDetail.querySelector('#emailBodyFrame') : null;
-                const textBody = emailDetail ? emailDetail.querySelector('.email-body-text') : null;
-
-                if (iframe && iframe.contentDocument && iframe.contentDocument.body) {
-                    bodyText = iframe.contentDocument.body.innerText || iframe.contentDocument.body.textContent || '';
-                } else if (textBody) {
-                    bodyText = textBody.textContent || '';
-                }
-
-                if (!bodyText.trim()) {
-                    showToast('邮件正文为空，无法提取', 'error');
-                    buttonElement.innerHTML = '❌';
-                    setTimeout(() => { buttonElement.disabled = false; buttonElement.innerHTML = originalContent; buttonElement.style.opacity = '1'; }, 1500);
-                    return;
-                }
-
-                // 正则提取验证码（4-8位数字/字母组合）
-                const codePatterns = [
-                    /(?:验证码|verification code|code|码|PIN|OTP|密码)[：:\s]*([A-Za-z0-9]{4,8})/i,
-                    /\b(\d{4,8})\b/,
-                    /(?:code|码)[：:\s]*([A-Za-z0-9-]{4,12})/i,
-                ];
-
-                // 正则提取链接
-                const urlPattern = /https?:\/\/[^\s<>"')\]]+/gi;
-                const urls = bodyText.match(urlPattern) || [];
-                // 过滤掉常见无关链接
-                const filteredUrls = urls.filter(u => !u.includes('unsubscribe') && !u.includes('privacy') && !u.includes('terms'));
-
-                let code = '';
-                for (const pattern of codePatterns) {
-                    const match = bodyText.match(pattern);
-                    if (match && match[1]) { code = match[1]; break; }
-                }
-
-                let result = '';
-                if (code) result += `验证码: ${code}`;
-                if (filteredUrls.length > 0) {
-                    if (result) result += '\n';
-                    result += `链接: ${filteredUrls[0]}`;
-                }
-
-                if (result) {
-                    // 复制到剪贴板
-                    if (navigator.clipboard && navigator.clipboard.writeText) {
-                        navigator.clipboard.writeText(code || filteredUrls[0] || result);
-                    }
-                    showToast(`已复制: ${code || filteredUrls[0]}`, 'success');
-                    buttonElement.innerHTML = '✅';
-                    buttonElement.style.opacity = '1';
-                } else {
-                    showToast('未找到验证码或链接', 'error');
-                    buttonElement.innerHTML = '❌';
-                    buttonElement.style.opacity = '1';
-                }
-            } catch (error) {
-                console.error('提取验证码失败:', error);
-                showToast('提取失败，请手动查看', 'error');
-                buttonElement.innerHTML = '❌';
-                buttonElement.style.opacity = '1';
+        async function extractVerificationFromDetail(buttonElement) {
+            if (!currentAccount || typeof copyVerificationInfo !== 'function') {
+                showToast('请先选择一个邮箱账号', 'error');
+                return false;
             }
 
-            setTimeout(() => {
-                buttonElement.disabled = false;
-                buttonElement.innerHTML = originalContent;
-                buttonElement.style.opacity = '1';
-                buttonElement.style.cursor = 'pointer';
-            }, 1500);
+            const detailOptions = buildDetailVerificationOptions();
+            return copyVerificationInfo(currentAccount, buttonElement, {
+                ...detailOptions,
+                fallbackExtractor: () => extractVerificationFallbackFromDetail(detailOptions),
+            });
         }
 
         // 全屏查看邮件
         let currentFullscreenEmail = null;
 
         function openFullscreenEmail() {
-            const emailDetail = document.getElementById('emailDetail');
+            const refs = getEmailDetailRefs();
+            const emailDetail = refs.container;
             const modal = document.getElementById('fullscreenEmailModal');
             const content = document.getElementById('fullscreenEmailContent');
             const title = document.getElementById('fullscreenEmailTitle');
+
+            if (!emailDetail) {
+                return;
+            }
 
             // 获取当前邮件的标题
             const subjectElement = emailDetail.querySelector('.email-detail-subject');
@@ -776,6 +902,13 @@
 
         // 显示邮件列表（移动端）
         function showEmailList() {
+            if (resolveEmailDetailSource() === 'temp') {
+                currentEmailDetail = null;
+                isTrustedMode = false;
+                resetEmailDetailState({ source: 'temp' });
+                return;
+            }
+
             syncEmailListVisibility(true);
             isListVisible = true;
             var t = document.getElementById('toggleListText');
@@ -807,6 +940,8 @@
                 if (navigator.clipboard && navigator.clipboard.writeText && window.isSecureContext) {
                     await navigator.clipboard.writeText(email);
                     showToast('邮箱地址已复制', 'success');
+                    // 派发 email-copied 事件到 window，供简洁模式轮询引擎监听
+                    window.dispatchEvent(new CustomEvent('email-copied', { detail: { email } }));
                     return true;
                 }
 
@@ -829,6 +964,8 @@
                 }
 
                 showToast('邮箱地址已复制', 'success');
+                // 派发 email-copied 事件到 window，供简洁模式轮询引擎监听
+                window.dispatchEvent(new CustomEvent('email-copied', { detail: { email } }));
                 return true;
             } catch (error) {
                 console.error('复制邮箱地址失败:', error);

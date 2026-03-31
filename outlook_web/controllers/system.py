@@ -366,7 +366,7 @@ def api_external_account_status() -> Any:
         )
         return jsonify(external_api_service.fail("INVALID_PARAM", "email 参数不合法")), 400
     try:
-        external_api_service.ensure_external_email_access(email_addr)
+        external_api_service.ensure_external_email_scope(email_addr)
     except external_api_service.ExternalApiError as exc:
         external_api_service.audit_external_api_access(
             action="external_api_access",

@@ -32,7 +32,7 @@
                             if (currentGroupId === tempEmailGroupId) {
                                 loadTempEmails(true);
                             } else {
-                                loadAccountsByGroup(currentGroupId, true);
+                                await loadAccountsByGroup(currentGroupId, true);
                             }
                         }
                     } else {
@@ -89,6 +89,12 @@
         // 选择分组
         async function selectGroup(groupId) {
             currentGroupId = groupId;
+            currentAccountPage = 1;  // 切换分组时重置到第 1 页
+
+            // 切换分组时停止所有正在运行的轮询（避免跨分组轮询堆积）
+            if (typeof stopAllPolls === 'function') {
+                stopAllPolls();
+            }
 
             // 清空搜索框
             const searchInput = document.getElementById('globalSearch');
@@ -135,12 +141,6 @@
                 }
             }
 
-            // 显示「注册Outlook账号」按钮（仅在非临时邮箱分组时）
-            const registerBtn = document.getElementById('registerOutlookBtn');
-            if (registerBtn) {
-                registerBtn.style.display = isTempEmailGroup ? 'none' : '';
-            }
-
             // 更新底部按钮
             updateAccountPanelFooter();
 
@@ -150,6 +150,7 @@
                 navigate('temp-emails');
                 return;
             } else {
+                // 切换分组：加载账号列表（不启动批量轮询）
                 await loadAccountsByGroup(groupId);
             }
         }
@@ -172,6 +173,9 @@
                 if (typeof renderCompactAccountList === 'function') {
                     renderCompactAccountList(accountsCache[groupId]);
                 }
+                // 标准模式：不再在加载分组时批量启动轮询
+                // 轮询仅在用户选中单个账号时启动（selectAccount 中处理）
+                // 这避免了首次加载、导航切换、分组切换时的 N×4 并发 API 请求
                 return;
             }
 
@@ -198,6 +202,9 @@
                     if (forceRefresh) {
                         requestAnimationFrame(() => { container.scrollTop = savedScrollTop; });
                     }
+                    // 标准模式：不再在加载分组时批量启动轮询
+                    // 轮询仅在用户选中单个账号时启动（selectAccount 中处理）
+                    // 这避免了首次加载、导航切换、分组切换时的 N×4 并发 API 请求
                 }
             } catch (error) {
                 container.innerHTML = `<div class="empty-state"><p>${translateAppTextLocal('加载失败')}</p></div>`;
@@ -243,7 +250,14 @@
                 return;
             }
 
-            // 头像颜色轮转数组 — 8 组渐变色
+            // ===== 分页计算 =====
+            const totalAccounts = accounts.length;
+            const totalPages = Math.ceil(totalAccounts / ACCOUNT_PAGE_SIZE);
+            if (currentAccountPage > totalPages) currentAccountPage = totalPages;
+            if (currentAccountPage < 1) currentAccountPage = 1;
+            const startIdx = (currentAccountPage - 1) * ACCOUNT_PAGE_SIZE;
+            // 只渲染当前页的账号，大幅减少 DOM 节点数
+            const pageAccounts = accounts.slice(startIdx, startIdx + ACCOUNT_PAGE_SIZE);
             const avatarGradients = [
                 ['#B85C38', '#E8734A'],  // 砖红→珊瑚
                 ['#3A7D44', '#5BAF6A'],  // 翠绿→嫩绿
@@ -255,7 +269,7 @@
                 ['#9B6B3E', '#D4A65A'],  // 赭石→沙金
             ];
 
-            container.innerHTML = accounts.map((acc, index) => {
+            container.innerHTML = pageAccounts.map((acc, index) => {
                 const isChecked = selectedAccountIds.has(acc.id);
                 const initial = (acc.email || '?')[0].toUpperCase();
                 const supportsTokenRefresh = isRefreshableOutlookAccount(acc);
@@ -322,13 +336,56 @@
                 </div>
             `}).join('');
 
+            // ===== 分页控件：总账号数超过一页时显示 =====
+            if (totalPages > 1) {
+                const paginationEl = document.createElement('div');
+                paginationEl.className = 'account-pagination';
+                paginationEl.innerHTML = `
+                    <button class="page-btn page-btn-prev"
+                            onclick="goToAccountPage(${currentAccountPage - 1})"
+                            ${currentAccountPage <= 1 ? 'disabled' : ''}>
+                        ◀
+                    </button>
+                    <span class="page-info">
+                        ${currentAccountPage} / ${totalPages} ${translateAppTextLocal('页')} &nbsp;·&nbsp; ${translateAppTextLocal('共')} ${totalAccounts} ${translateAppTextLocal('个账号')}
+                    </span>
+                    <button class="page-btn page-btn-next"
+                            onclick="goToAccountPage(${currentAccountPage + 1})"
+                            ${currentAccountPage >= totalPages ? 'disabled' : ''}>
+                        ▶
+                    </button>
+                `;
+                container.appendChild(paginationEl);
+            }
+
             updateSelectAllCheckbox();
             updateBatchActionBar();
+            // 如果有正在运行的轮询，重新显示轮询指示器（账号列表重渲染后会丢失绿点）
+            if (typeof reapplyAllPollUI === 'function') {
+                reapplyAllPollUI();
+            }
+        }
+
+        // 跳转到指定账号分页
+        function goToAccountPage(page) {
+            if (!accountsCache[currentGroupId]) return;
+            const accounts = applyFiltersAndSort(accountsCache[currentGroupId]);
+            const totalPages = Math.ceil(accounts.length / ACCOUNT_PAGE_SIZE);
+            if (page < 1 || page > totalPages) return;
+            currentAccountPage = page;
+            renderAccountList(accounts);
+            // 滚动到账号列表顶部
+            const container = document.getElementById('accountList');
+            if (container) container.scrollTop = 0;
         }
 
         // 排序相关变量
         let currentSortBy = 'refresh_time';
         let currentSortOrder = 'asc';
+
+        // 账号列表分页状态
+        let currentAccountPage = 1;
+        const ACCOUNT_PAGE_SIZE = 50;
 
         // 排序账号列表
         function sortAccounts(sortBy) {
@@ -352,6 +409,7 @@
 
             // 重新加载并排序账号列表
             if (accountsCache[currentGroupId]) {
+                currentAccountPage = 1;  // 排序时重置到第 1 页
                 const sortedAccounts = applyFiltersAndSort(accountsCache[currentGroupId]);
                 renderAccountList(sortedAccounts);
             }
@@ -394,6 +452,7 @@
         // Tag Filter Change Handler
         function handleTagFilterChange() {
             if (accountsCache[currentGroupId]) {
+                currentAccountPage = 1;  // 标签过滤时重置到第 1 页
                 const filteredAccounts = applyFiltersAndSort(accountsCache[currentGroupId]);
                 renderAccountList(filteredAccounts);
             }
@@ -414,6 +473,7 @@
             const titleElement = document.getElementById('currentGroupName');
 
             if (!query.trim()) {
+                currentAccountPage = 1;  // 清空搜索时重置页码
                 loadAccountsByGroup(currentGroupId);
                 return;
             }
@@ -425,6 +485,7 @@
                 const data = await response.json();
 
                 if (data.success) {
+                    currentAccountPage = 1;  // 搜索结果重置到第 1 页
                     titleElement.textContent = `搜索结果 (${data.accounts.length})`;
                     renderAccountList(data.accounts);
                 } else {
@@ -752,10 +813,35 @@
         // 复制验证信息到剪贴板
         const verificationCopyInFlight = new Set();
 
-        async function copyVerificationInfo(email, buttonElement) {
+        function buildVerificationExtractEndpoint(email, options = {}) {
+            const normalizedSource = String(options?.source || '').trim().toLowerCase();
+            if (normalizedSource === 'temp' || normalizedSource === 'temp-mail' || normalizedSource === 'temp_mail') {
+                return `/api/temp-emails/${encodeURIComponent(email)}/extract-verification`;
+            }
+            return `/api/emails/${encodeURIComponent(email)}/extract-verification`;
+        }
+
+        async function tryFallbackVerificationExtraction(options = {}) {
+            if (typeof options.fallbackExtractor !== 'function') {
+                return null;
+            }
+
+            try {
+                const fallbackResult = await options.fallbackExtractor();
+                if (!fallbackResult || !fallbackResult.formatted) {
+                    return null;
+                }
+                return fallbackResult;
+            } catch (fallbackError) {
+                console.error('本地兜底提取失败:', fallbackError);
+                return null;
+            }
+        }
+
+        async function copyVerificationInfo(email, buttonElement, options = {}) {
             const requestKey = String(email || '').trim().toLowerCase();
             if (!requestKey || verificationCopyInFlight.has(requestKey)) {
-                return;
+                return false;
             }
             verificationCopyInFlight.add(requestKey);
 
@@ -767,7 +853,7 @@
             buttonElement.style.cursor = 'wait';
 
             try {
-                const response = await fetch(`/api/emails/${encodeURIComponent(email)}/extract-verification`);
+                const response = await fetch(buildVerificationExtractEndpoint(email, options));
                 const data = await response.json();
 
                 if (data.success && data.data && data.data.formatted) {
@@ -782,7 +868,25 @@
                     // 成功状态
                     buttonElement.innerHTML = '✅';
                     buttonElement.style.opacity = '1';
+                    return true;
                 } else {
+                    const fallbackResult = await tryFallbackVerificationExtraction(options);
+                    if (fallbackResult) {
+                        await copyToClipboard(
+                            fallbackResult.copyText || fallbackResult.verification_code || fallbackResult.verification_link || fallbackResult.formatted
+                        );
+                        const copiedValue = fallbackResult.displayValue || fallbackResult.verification_code || fallbackResult.verification_link || fallbackResult.formatted;
+                        showToast(
+                            getUiLanguage() === 'en'
+                                ? `Copied from current email: ${copiedValue}`
+                                : `已从当前邮件兜底复制: ${copiedValue}`,
+                            'warning'
+                        );
+                        buttonElement.innerHTML = '✅';
+                        buttonElement.style.opacity = '1';
+                        return true;
+                    }
+
                     const errorMsg = window.resolveApiErrorMessage
                         ? window.resolveApiErrorMessage(data.error || data, '未找到验证码或链接', 'No verification code or link was found')
                         : (data.error?.message || data.error || '未找到验证码或链接');
@@ -790,13 +894,31 @@
                     // 失败状态
                     buttonElement.innerHTML = '❌';
                     buttonElement.style.opacity = '1';
+                    return false;
                 }
             } catch (error) {
                 console.error('提取验证码失败:', error);
+                const fallbackResult = await tryFallbackVerificationExtraction(options);
+                if (fallbackResult) {
+                    await copyToClipboard(
+                        fallbackResult.copyText || fallbackResult.verification_code || fallbackResult.verification_link || fallbackResult.formatted
+                    );
+                    const copiedValue = fallbackResult.displayValue || fallbackResult.verification_code || fallbackResult.verification_link || fallbackResult.formatted;
+                    showToast(
+                        getUiLanguage() === 'en'
+                            ? `Copied from current email: ${copiedValue}`
+                            : `已从当前邮件兜底复制: ${copiedValue}`,
+                        'warning'
+                    );
+                    buttonElement.innerHTML = '✅';
+                    buttonElement.style.opacity = '1';
+                    return true;
+                }
                 showToast(translateAppTextLocal('网络错误，请重试'), 'error');
                 // 失败状态
                 buttonElement.innerHTML = '❌';
                 buttonElement.style.opacity = '1';
+                return false;
             } finally {
                 verificationCopyInFlight.delete(requestKey);
                 // 延迟恢复按钮状态

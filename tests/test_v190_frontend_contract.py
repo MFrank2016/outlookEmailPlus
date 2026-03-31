@@ -31,7 +31,10 @@ class V190FrontendContractTests(unittest.TestCase):
         self.assertIn("window.resolveApiErrorMessage", js)
         self.assertIn("switcher-docked", js)
         self.assertIn("document.querySelector('.sidebar-bottom')", js)
-        self.assertIn("root.querySelectorAll('[placeholder],[title],[aria-label],input[type=\"button\"][value]')", js)
+        self.assertIn(
+            "root.querySelectorAll('[placeholder],[title],[aria-label],input[type=\"button\"][value]')",
+            js,
+        )
         self.assertIn("const core = text.trim()", js)
 
     def test_i18n_skips_dynamic_business_scopes(self):
@@ -54,15 +57,21 @@ class V190FrontendContractTests(unittest.TestCase):
     def test_main_js_does_not_override_i18n_runtime_helpers(self):
         client = self.app.test_client()
         main_js = self._get_text(client, "/static/js/main.js")
-        self.assertIn("const pickApiMessage = (payload, fallbackZh, fallbackEn) =>", main_js)
+        self.assertIn(
+            "const pickApiMessage = (payload, fallbackZh, fallbackEn) =>", main_js
+        )
         self.assertIn("const formatUiDateTime = (dateStr, options = {}) =>", main_js)
         self.assertIn(
-            "const formatUiRelativeTime = (dateStr, fallbackZh = '从未刷新', fallbackEn = 'Never refreshed') =>", main_js
+            "const formatUiRelativeTime = (dateStr, fallbackZh = '从未刷新', fallbackEn = 'Never refreshed') =>",
+            main_js,
         )
-        self.assertNotIn("function pickApiMessage(payload, fallbackZh, fallbackEn)", main_js)
+        self.assertNotIn(
+            "function pickApiMessage(payload, fallbackZh, fallbackEn)", main_js
+        )
         self.assertNotIn("function formatUiDateTime(dateStr, options = {})", main_js)
         self.assertNotIn(
-            "function formatUiRelativeTime(dateStr, fallbackZh = '从未刷新', fallbackEn = 'Never refreshed')", main_js
+            "function formatUiRelativeTime(dateStr, fallbackZh = '从未刷新', fallbackEn = 'Never refreshed')",
+            main_js,
         )
 
     def test_frontend_no_longer_uses_raw_error_object_toasts_on_key_paths(self):
@@ -144,7 +153,6 @@ class V190FrontendContractTests(unittest.TestCase):
             "Cron 表达式",
             "📨 收件箱",
             "⚠️ 垃圾邮件",
-            "🔑 获取 Token",
             "🔔 推送",
             "QQ邮箱",
             "163邮箱",
@@ -184,7 +192,8 @@ class V190FrontendContractTests(unittest.TestCase):
         self.assertIn("translateAppTextLocal('通知')", groups_js)
         self.assertIn("translateAppTextLocal('点击关闭该邮箱通知参与')", groups_js)
         self.assertIn(
-            "translateAppTextLocal(notificationEnabled ? '该邮箱通知参与（已开启）' : '开启该邮箱通知参与')", groups_js
+            "translateAppTextLocal(notificationEnabled ? '该邮箱通知参与（已开启）' : '开启该邮箱通知参与')",
+            groups_js,
         )
         self.assertIn("translateAppTextLocal('收件箱为空')", emails_js)
         self.assertIn("translateAppTextLocal('暂无邮件')", temp_emails_js)
@@ -201,15 +210,26 @@ class V190FrontendContractTests(unittest.TestCase):
             "这里只配置 Email 通知通道。普通邮箱需在账号列表开启通知后才会通过 Email 发送；临时邮箱按当前通知规则处理。启用后仅从新到达的邮件开始通知。",
             index_html,
         )
-        self.assertIn("这里只配置 Email 渠道的接收邮箱，不会让所有普通邮箱自动发送。", index_html)
+        self.assertIn(
+            "这里只配置 Email 渠道的接收邮箱，不会让所有普通邮箱自动发送。", index_html
+        )
         self.assertIn(
             "这里只配置 Telegram 通知通道。普通邮箱需在账号列表开启通知后才会通过 Telegram 发送；临时邮箱按当前通知规则处理。",
             index_html,
         )
-        self.assertNotIn("全局生效，覆盖普通邮箱和临时邮箱；仅从启用后新到达的邮件开始通知。", index_html)
-        self.assertNotIn("只需填写接收邮箱，不暴露复杂邮件网关配置。关闭通知后可保留该邮箱。", index_html)
+        self.assertNotIn(
+            "全局生效，覆盖普通邮箱和临时邮箱；仅从启用后新到达的邮件开始通知。",
+            index_html,
+        )
+        self.assertNotIn(
+            "只需填写接收邮箱，不暴露复杂邮件网关配置。关闭通知后可保留该邮箱。",
+            index_html,
+        )
         self.assertIn("acc.notification_enabled !== undefined", groups_js)
-        self.assertIn("const response = await fetch(`/api/accounts/search?q=${encodeURIComponent(query)}`);", groups_js)
+        self.assertIn(
+            "const response = await fetch(`/api/accounts/search?q=${encodeURIComponent(query)}`);",
+            groups_js,
+        )
 
     def test_frontend_import_and_export_error_contract_helpers_are_consumed(self):
         client = self.app.test_client()
@@ -223,23 +243,6 @@ class V190FrontendContractTests(unittest.TestCase):
         self.assertIn("translateAppTextLocal('【错误详情】')", main_js)
         self.assertIn("translateAppTextLocal('【技术堆栈/细节】')", main_js)
 
-    def test_outlook_oauth_modal_uses_local_verify_token_contract_and_explains_client_id(self):
-        client = self.app.test_client()
-        self._login(client)
-        main_js = self._get_text(client, "/static/js/main.js")
-        index_html = self._get_text(client, "/")
-
-        self.assertIn("fetch('/api/export/verify'", main_js)
-        self.assertIn("verify_token: verifyData.verify_token", main_js)
-        self.assertIn("window.addEventListener('message'", main_js)
-        self.assertIn("payload.type !== 'outlook-oauth-callback'", main_js)
-        self.assertIn("event.source?.postMessage({ type: 'outlook-oauth-callback-ack' }, event.origin);", main_js)
-        self.assertIn("handleApiError(data, '获取授权链接失败');", main_js)
-        self.assertIn("state=<generated-by-system>", main_js)
-        self.assertNotIn("state=12345", main_js)
-        self.assertIn("Azure / Microsoft OAuth 应用级配置", index_html)
-        self.assertIn("用于本系统二次验证，不是微软邮箱密码", index_html)
-
     def test_frontend_polling_settings_preserve_zero_value(self):
         client = self.app.test_client()
         self._login(client)
@@ -248,27 +251,51 @@ class V190FrontendContractTests(unittest.TestCase):
 
         self.assertIn("function parseIntegerSetting(value, fallback)", main_js)
         self.assertIn("let autoPollingEnabled = false;", main_js)
-        self.assertIn("function syncPollingForCurrentAccount({ restart = false, forceRefresh = false } = {})", main_js)
-        self.assertIn("function applyPollingSettings(settings, { restart = false, forceRefresh = false } = {})", main_js)
-        self.assertIn("autoPollingEnabled = isAutoPollingEnabledSetting(settings.enable_auto_polling);", main_js)
-        self.assertIn("String(parseIntegerSetting(data.settings.polling_count, 5))", main_js)
-        self.assertIn("maxPollingCount = parseIntegerSetting(settings.polling_count, 5);", main_js)
+        self.assertIn(
+            "function applyPollingSettings(settings, { restart = false", main_js
+        )
+        # [Phase 3 兼容] 使用两个字段的或运算
+        self.assertIn(
+            "autoPollingEnabled = isAutoPollingEnabledSetting(settings.enable_auto_polling)",
+            main_js,
+        )
+        self.assertIn(
+            "|| isAutoPollingEnabledSetting(settings.enable_compact_auto_poll);",
+            main_js,
+        )
+        self.assertIn(
+            "String(parseIntegerSetting(data.settings.polling_count, 5))", main_js
+        )
+        self.assertIn(
+            "maxPollingCount = parseIntegerSetting(settings.polling_count, 5);", main_js
+        )
         self.assertIn("applyPollingSettings(settings, { restart: true });", main_js)
         self.assertNotIn("data.settings.polling_count || '5'", main_js)
         self.assertNotIn("parseInt(data.settings.polling_count) || 5", main_js)
         self.assertIn('id="pollingCount" min="0" max="100" value="5"', index_html)
         self.assertIn("范围：0-100 次，设置为 0 表示持续轮询", index_html)
 
-    def test_frontend_auto_polling_uses_shared_runtime_state_for_account_selection_and_email_load(self):
+    def test_frontend_auto_polling_uses_shared_runtime_state_for_account_selection_and_email_load(
+        self,
+    ):
+        """Phase 2: 轮询触发从'选中账号自动启动'改为'复制邮箱启动'，由统一引擎处理"""
         client = self.app.test_client()
         main_js = self._get_text(client, "/static/js/main.js")
         accounts_js = self._get_text(client, "/static/js/features/accounts.js")
         emails_js = self._get_text(client, "/static/js/features/emails.js")
+        poll_engine_js = self._get_text(client, "/static/js/features/poll-engine.js")
+        compact_js = self._get_text(client, "/static/js/features/mailbox_compact.js")
 
-        self.assertIn("if (!autoPollingEnabled) {", main_js)
-        self.assertIn("stopPolling(true);", main_js)
-        self.assertIn("syncPollingForCurrentAccount({ restart: true });", accounts_js)
-        self.assertIn("syncPollingForCurrentAccount();", emails_js)
+        # 统一引擎包含核心轮询逻辑
+        self.assertIn("function startPoll(email, opts)", poll_engine_js)
+        self.assertIn("function stopPoll(email, toastMsg, toastType)", poll_engine_js)
+        self.assertIn("function stopAllPolls()", poll_engine_js)
+        # email-copied 事件监听在 compact 适配层（现支持标准和简洁两种模式）
+        self.assertIn("email-copied", compact_js)
+        # 标准模式选中账号不再自动启动轮询（已删除 syncPollingForCurrentAccount）
+        self.assertNotIn("syncPollingForCurrentAccount", accounts_js)
+        self.assertNotIn("syncPollingForCurrentAccount", emails_js)
+        # 临时邮箱切换使用统一引擎停止
         self.assertNotIn("fetch('/api/settings')", emails_js)
 
     def test_account_panel_density_sync_runs_on_init_and_mailbox_navigation(self):
@@ -280,22 +307,44 @@ class V190FrontendContractTests(unittest.TestCase):
         self.assertIn("function scheduleAccountPanelDensitySync()", main_js)
         self.assertIn("syncAccountPanelDensityIfVisible();", main_js)
         self.assertIn("scheduleAccountPanelDensitySync();", main_js)
-        self.assertIn("window.addEventListener('resize', scheduleAccountPanelDensitySync, { passive: true });", main_js)
+        self.assertIn(
+            "window.addEventListener('resize', scheduleAccountPanelDensitySync, { passive: true });",
+            main_js,
+        )
         self.assertIn("if (page === 'mailbox') {", main_js)
 
-    def test_external_pool_settings_are_exposed_in_settings_page_and_saved_by_frontend(self):
+    def test_external_pool_settings_are_exposed_in_settings_page_and_saved_by_frontend(
+        self,
+    ):
         client = self.app.test_client()
         self._login(client)
         main_js = self._get_text(client, "/static/js/main.js")
         index_html = self._get_text(client, "/")
 
-        self.assertIn("const poolExternalEnabledEl = document.getElementById('poolExternalEnabled');", main_js)
+        self.assertIn(
+            "const poolExternalEnabledEl = document.getElementById('poolExternalEnabled');",
+            main_js,
+        )
         self.assertIn("data.settings.pool_external_enabled === true", main_js)
-        self.assertIn("settings.pool_external_enabled = poolExternalEnabledEl.checked", main_js)
-        self.assertIn("settings.external_api_disable_pool_claim_random = disablePoolClaimRandomEl.checked", main_js)
-        self.assertIn("settings.external_api_disable_pool_claim_release = disablePoolClaimReleaseEl.checked", main_js)
-        self.assertIn("settings.external_api_disable_pool_claim_complete = disablePoolClaimCompleteEl.checked", main_js)
-        self.assertIn("settings.external_api_disable_pool_stats = disablePoolStatsEl.checked", main_js)
+        self.assertIn(
+            "settings.pool_external_enabled = poolExternalEnabledEl.checked", main_js
+        )
+        self.assertIn(
+            "settings.external_api_disable_pool_claim_random = disablePoolClaimRandomEl.checked",
+            main_js,
+        )
+        self.assertIn(
+            "settings.external_api_disable_pool_claim_release = disablePoolClaimReleaseEl.checked",
+            main_js,
+        )
+        self.assertIn(
+            "settings.external_api_disable_pool_claim_complete = disablePoolClaimCompleteEl.checked",
+            main_js,
+        )
+        self.assertIn(
+            "settings.external_api_disable_pool_stats = disablePoolStatsEl.checked",
+            main_js,
+        )
         self.assertIn('id="poolExternalEnabled"', index_html)
         self.assertIn('id="externalApiDisablePoolClaimRandom"', index_html)
         self.assertIn('id="externalApiDisablePoolClaimRelease"', index_html)
@@ -307,12 +356,20 @@ class V190FrontendContractTests(unittest.TestCase):
     def test_account_edit_uses_conditional_outlook_credential_validation(self):
         client = self.app.test_client()
         accounts_js = self._get_text(client, "/static/js/features/accounts.js")
-        self.assertIn("clientIdInput.dataset.originalValue = acc.client_id || '';", accounts_js)
         self.assertIn(
-            "const wantsToUpdateOutlookCredentials = !isImap && (hasClientIdChanged || !!refreshToken);", accounts_js
+            "clientIdInput.dataset.originalValue = acc.client_id || '';", accounts_js
         )
-        self.assertIn("if (wantsToUpdateOutlookCredentials && (!data.client_id || !data.refresh_token))", accounts_js)
-        self.assertNotIn("if (!isImap && (!data.client_id || !data.refresh_token))", accounts_js)
+        self.assertIn(
+            "const wantsToUpdateOutlookCredentials = !isImap && (hasClientIdChanged || !!refreshToken);",
+            accounts_js,
+        )
+        self.assertIn(
+            "if (wantsToUpdateOutlookCredentials && (!data.client_id || !data.refresh_token))",
+            accounts_js,
+        )
+        self.assertNotIn(
+            "if (!isImap && (!data.client_id || !data.refresh_token))", accounts_js
+        )
 
     def test_collapsed_sidebar_hides_github_label_to_avoid_overlap(self):
         client = self.app.test_client()
@@ -320,11 +377,19 @@ class V190FrontendContractTests(unittest.TestCase):
         i18n_js = self._get_text(client, "/static/js/i18n.js")
         self.assertIn(".sidebar-collapsed .btn-github span { display: none; }", css)
         self.assertIn(".sidebar-collapsed .btn-github {", css)
-        self.assertIn(".sidebar-collapsed #globalLanguageSwitcher.switcher-docked", i18n_js)
+        self.assertIn(
+            ".sidebar-collapsed #globalLanguageSwitcher.switcher-docked", i18n_js
+        )
 
     def test_scroll_is_not_globally_locked_on_html_body(self):
         client = self.app.test_client()
         css = self._get_text(client, "/static/css/main.css")
         normalized = css.replace("\r\n", "\n")
-        self.assertNotRegex(normalized, re.compile(r"html\\s*\\{[^}]*overflow:\\s*hidden;", re.MULTILINE))
-        self.assertNotRegex(normalized, re.compile(r"body\\s*\\{[^}]*overflow:\\s*hidden;", re.MULTILINE))
+        self.assertNotRegex(
+            normalized,
+            re.compile(r"html\\s*\\{[^}]*overflow:\\s*hidden;", re.MULTILINE),
+        )
+        self.assertNotRegex(
+            normalized,
+            re.compile(r"body\\s*\\{[^}]*overflow:\\s*hidden;", re.MULTILINE),
+        )

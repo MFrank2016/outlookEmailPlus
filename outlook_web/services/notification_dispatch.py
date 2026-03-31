@@ -9,7 +9,8 @@ from outlook_web.repositories import accounts as accounts_repo
 from outlook_web.repositories import notification_state as notification_state_repo
 from outlook_web.repositories import settings as settings_repo
 from outlook_web.repositories import temp_emails as temp_emails_repo
-from outlook_web.services import email_push, gptmail
+from outlook_web.services import email_push
+from outlook_web.services.temp_mail_service import TempMailError, TempMailService
 
 logger = logging.getLogger(__name__)
 
@@ -26,7 +27,9 @@ MAX_TEMP_EMAIL_PREVIEW_LENGTH = 200
 
 
 class NotificationDispatchError(Exception):
-    def __init__(self, code: str, message: str, *, message_en: str, status: int = 502) -> None:
+    def __init__(
+        self, code: str, message: str, *, message_en: str, status: int = 502
+    ) -> None:
         super().__init__(message)
         self.code = code
         self.message = message
@@ -79,9 +82,19 @@ def _normalize_temp_email_source(temp_email: dict[str, Any]) -> dict[str, Any]:
 
 
 def list_email_notification_sources() -> list[dict[str, Any]]:
-    accounts = [acc for acc in accounts_repo.load_accounts() if (acc.get("status") or "active") == "active"]
-    temp_emails = [item for item in temp_emails_repo.load_temp_emails() if (item.get("status") or "active") == "active"]
-    return [_normalize_account_source(acc) for acc in accounts] + [_normalize_temp_email_source(item) for item in temp_emails]
+    accounts = [
+        acc
+        for acc in accounts_repo.load_accounts()
+        if (acc.get("status") or "active") == "active"
+    ]
+    temp_emails = [
+        item
+        for item in temp_emails_repo.load_temp_emails()
+        if (item.get("status") or "active") == "active"
+    ]
+    return [_normalize_account_source(acc) for acc in accounts] + [
+        _normalize_temp_email_source(item) for item in temp_emails
+    ]
 
 
 def _is_account_notification_participant(account: dict[str, Any]) -> bool:
@@ -115,7 +128,9 @@ def _extract_message_timestamp(raw_value: Any) -> str:
     if raw_value is None:
         return ""
     if isinstance(raw_value, (int, float)):
-        return datetime.fromtimestamp(float(raw_value), timezone.utc).strftime("%Y-%m-%dT%H:%M:%S")
+        return datetime.fromtimestamp(float(raw_value), timezone.utc).strftime(
+            "%Y-%m-%dT%H:%M:%S"
+        )
     text = str(raw_value).strip()
     if not text:
         return ""
@@ -131,8 +146,12 @@ def _message_sort_key(message: dict[str, Any]) -> tuple[str, str]:
     )
 
 
-def _persist_channel_cursor(channel: str, source: dict[str, Any], cursor_value: str) -> None:
-    notification_state_repo.upsert_cursor(channel, source["source_type"], source["source_key"], cursor_value)
+def _persist_channel_cursor(
+    channel: str, source: dict[str, Any], cursor_value: str
+) -> None:
+    notification_state_repo.upsert_cursor(
+        channel, source["source_type"], source["source_key"], cursor_value
+    )
 
     if channel == CHANNEL_TELEGRAM and source["source_type"] == SOURCE_ACCOUNT:
         from outlook_web.repositories.accounts import update_telegram_cursor
@@ -142,16 +161,24 @@ def _persist_channel_cursor(channel: str, source: dict[str, Any], cursor_value: 
             update_telegram_cursor(int(account_id), cursor_value)
 
 
-def _get_initial_cursor_value(channel: str, source: dict[str, Any], job_start: str) -> str:
+def _get_initial_cursor_value(
+    channel: str, source: dict[str, Any], job_start: str
+) -> str:
     if channel == CHANNEL_TELEGRAM and source["source_type"] == SOURCE_ACCOUNT:
-        legacy_cursor = str(source.get("account", {}).get("telegram_last_checked_at") or "").strip()
+        legacy_cursor = str(
+            source.get("account", {}).get("telegram_last_checked_at") or ""
+        ).strip()
         if legacy_cursor:
             return legacy_cursor
     return job_start
 
 
-def _ensure_channel_cursor(channel: str, source: dict[str, Any], job_start: str) -> tuple[str, bool]:
-    cursor = notification_state_repo.get_cursor(channel, source["source_type"], source["source_key"])
+def _ensure_channel_cursor(
+    channel: str, source: dict[str, Any], job_start: str
+) -> tuple[str, bool]:
+    cursor = notification_state_repo.get_cursor(
+        channel, source["source_type"], source["source_key"]
+    )
     if cursor:
         return cursor, False
     initial_cursor = _get_initial_cursor_value(channel, source, job_start)
@@ -167,30 +194,51 @@ def _fetch_account_messages(source: dict[str, Any], since: str) -> list[dict[str
     for folder in ACCOUNT_INCLUDED_FOLDERS:
         try:
             if telegram_push._should_fetch_account_via_graph(account):
-                fetched = telegram_push._fetch_new_emails_graph(account, since, folder=folder)
+                fetched = telegram_push._fetch_new_emails_graph(
+                    account, since, folder=folder
+                )
             else:
-                fetched = telegram_push._fetch_new_emails_imap(account, since, folder=folder)
+                fetched = telegram_push._fetch_new_emails_imap(
+                    account, since, folder=folder
+                )
             for item in fetched:
                 enriched = dict(item)
                 enriched["folder"] = folder
                 emails.append(enriched)
         except Exception as exc:
             logger.warning(
-                "[notification_dispatch] account fetch failed source=%s folder=%s err=%s", source["label"], folder, exc
+                "[notification_dispatch] account fetch failed source=%s folder=%s err=%s",
+                source["label"],
+                folder,
+                exc,
             )
             raise
     return emails
 
 
-def _fetch_temp_email_messages(source: dict[str, Any], since: str) -> list[dict[str, Any]]:
+def _fetch_temp_email_messages(
+    source: dict[str, Any], since: str
+) -> list[dict[str, Any]]:
     address = source["email"]
-    api_messages = gptmail.get_temp_emails_from_api(address)
-    if api_messages is not None:
-        temp_emails_repo.save_temp_email_messages(address, api_messages)
+
+    # 通过 TempMailService（provider factory）触发远端同步并写入 DB。
+    # 忽略返回值（_message_summary 缺少 content/html_content 字段），
+    # 后续直接从 DB 读取完整行数据。
+    try:
+        TempMailService().list_messages(address, sync_remote=True)
+    except (TempMailError, Exception):
+        logger.warning(
+            "[notification_dispatch] temp email sync failed address=%s",
+            address,
+            exc_info=True,
+        )
+
     messages = temp_emails_repo.get_temp_email_messages(address)
     results: list[dict[str, Any]] = []
     for item in messages:
-        received_at = _extract_message_timestamp(item.get("timestamp") or item.get("created_at"))
+        received_at = _extract_message_timestamp(
+            item.get("timestamp") or item.get("created_at")
+        )
         if received_at and received_at <= since:
             continue
         plain_content = (item.get("content", "") or "").strip()
@@ -232,7 +280,9 @@ def build_message_key(source: dict[str, Any], message: dict[str, Any]) -> str:
     )
 
 
-def send_business_email_notification(source: dict[str, Any], message: dict[str, Any]) -> None:
+def send_business_email_notification(
+    source: dict[str, Any], message: dict[str, Any]
+) -> None:
     recipient = email_push.get_saved_notification_recipient()
     subject = f"[Outlook Email Plus] {source['label']} 收到新邮件"
     received_at = message.get("received_at") or "-"
@@ -275,7 +325,10 @@ def send_business_telegram_notification(
     bot_token: str,
     chat_id: str,
 ) -> None:
-    from outlook_web.services.telegram_push import _build_telegram_message, _send_telegram_message
+    from outlook_web.services.telegram_push import (
+        _build_telegram_message,
+        _send_telegram_message,
+    )
 
     account_email = source.get("account", {}).get("email", source.get("label", ""))
     payload = _build_telegram_message(account_email, message)
@@ -410,7 +463,9 @@ def process_channel_for_sources(
             cursor=cursor,
             messages=messages,
             sender=sender,
-            max_notifications=None if max_notifications is None else max(max_notifications - sent_count, 0),
+            max_notifications=None
+            if max_notifications is None
+            else max(max_notifications - sent_count, 0),
         )
         sent_count += int(result["sent_count"])
         failed_count += int(result["failed_count"])
@@ -432,7 +487,9 @@ def _get_telegram_runtime_config() -> dict[str, str] | None:
     if not bot_token_raw or not chat_id:
         return None
 
-    bot_token = decrypt_data(bot_token_raw) if is_encrypted(bot_token_raw) else bot_token_raw
+    bot_token = (
+        decrypt_data(bot_token_raw) if is_encrypted(bot_token_raw) else bot_token_raw
+    )
     bot_token = str(bot_token or "").strip()
     if not bot_token:
         return None
@@ -440,7 +497,10 @@ def _get_telegram_runtime_config() -> dict[str, str] | None:
 
 
 def _is_email_channel_enabled() -> bool:
-    enabled = settings_repo.get_setting("email_notification_enabled", "false").lower() == "true"
+    enabled = (
+        settings_repo.get_setting("email_notification_enabled", "false").lower()
+        == "true"
+    )
     return enabled and email_push.is_email_notification_ready()
 
 
@@ -459,16 +519,27 @@ def _build_active_channels_for_source(
     if not _is_source_notification_enabled(source):
         return []
 
-    active_channels: list[tuple[str, Callable[[dict[str, Any], dict[str, Any]], None], int]] = []
+    active_channels: list[
+        tuple[str, Callable[[dict[str, Any], dict[str, Any]], None], int]
+    ] = []
 
     if email_enabled:
-        active_channels.append((CHANNEL_EMAIL, send_business_email_notification, MAX_EMAIL_NOTIFICATIONS_PER_JOB))
+        active_channels.append(
+            (
+                CHANNEL_EMAIL,
+                send_business_email_notification,
+                MAX_EMAIL_NOTIFICATIONS_PER_JOB,
+            )
+        )
 
     if telegram_runtime is not None and source["source_type"] == SOURCE_ACCOUNT:
         active_channels.append(
             (
                 CHANNEL_TELEGRAM,
-                lambda current_source, message, bot_token=telegram_runtime["bot_token"], chat_id=telegram_runtime[
+                lambda current_source,
+                message,
+                bot_token=telegram_runtime["bot_token"],
+                chat_id=telegram_runtime[
                     "chat_id"
                 ]: send_business_telegram_notification(  # noqa: E731
                     current_source,
@@ -517,11 +588,16 @@ def run_notification_dispatch_job(app) -> None:
                 if initialized:
                     initialized_channels.add(channel)
 
-            fetch_plan: dict[str, list[tuple[str, Callable[[dict[str, Any], dict[str, Any]], None], int]]] = {}
+            fetch_plan: dict[
+                str,
+                list[tuple[str, Callable[[dict[str, Any], dict[str, Any]], None], int]],
+            ] = {}
             for channel, sender, channel_limit in active_channels:
                 if channel in initialized_channels:
                     continue
-                fetch_plan.setdefault(channel_cursors[channel], []).append((channel, sender, channel_limit))
+                fetch_plan.setdefault(channel_cursors[channel], []).append(
+                    (channel, sender, channel_limit)
+                )
 
             if not fetch_plan:
                 continue
@@ -541,7 +617,9 @@ def run_notification_dispatch_job(app) -> None:
                     continue
 
                 for channel, sender, channel_limit in planned_channels:
-                    remaining = channel_limit - int(channel_totals[channel]["sent_count"])
+                    remaining = channel_limit - int(
+                        channel_totals[channel]["sent_count"]
+                    )
                     if remaining <= 0:
                         continue
                     result = _process_messages_for_channel(
@@ -553,18 +631,29 @@ def run_notification_dispatch_job(app) -> None:
                         max_notifications=remaining,
                     )
                     channel_totals[channel]["sent_count"] += int(result["sent_count"])
-                    channel_totals[channel]["failed_count"] += int(result["failed_count"])
-                    channel_totals[channel]["dedup_skipped"] += int(result["dedup_skipped"])
+                    channel_totals[channel]["failed_count"] += int(
+                        result["failed_count"]
+                    )
+                    channel_totals[channel]["dedup_skipped"] += int(
+                        result["dedup_skipped"]
+                    )
 
         notification_state_repo.cleanup_delivery_logs()
 
 
 def run_email_notification_job(app) -> None:
     with app.app_context():
-        enabled = settings_repo.get_setting("email_notification_enabled", "false").lower() == "true"
+        enabled = (
+            settings_repo.get_setting("email_notification_enabled", "false").lower()
+            == "true"
+        )
         if not enabled or not email_push.is_email_notification_ready():
             return
-        sources = [source for source in list_email_notification_sources() if _is_source_notification_enabled(source)]
+        sources = [
+            source
+            for source in list_email_notification_sources()
+            if _is_source_notification_enabled(source)
+        ]
         process_channel_for_sources(
             channel=CHANNEL_EMAIL,
             sources=sources,

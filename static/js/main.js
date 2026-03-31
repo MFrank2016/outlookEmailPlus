@@ -24,14 +24,11 @@
         let currentEmailDetail = null;
         let isTrustedMode = false;
 
-        // 轮询相关
-        let pollingTimer = null;
-        let pollingCount = 0;
+        // 轮询相关（Phase 2: 变量保留用于设置读写，实际轮询由统一引擎处理）
         let maxPollingCount = 5;
         let pollingInterval = 10;
         let autoPollingEnabled = false;
-        let isPolling = false;
-        let knownEmailIds = new Set();
+        // [Phase 3] compact 独立变量已废弃，统一使用上方标准字段
 
         // 导航状态
         let currentPage = 'dashboard';
@@ -339,50 +336,68 @@
             return value === true || value === 'true';
         }
 
-        function syncPollingForCurrentAccount({ restart = false, forceRefresh = false } = {}) {
-            if (isTempEmailGroup || !currentAccount) {
-                if (isPolling && (!autoPollingEnabled || restart)) {
-                    stopPolling(true);
-                }
-                return;
+        // 应用标准轮询设置到内部变量（Phase 2: 仅更新变量，实际轮询由统一引擎处理）
+        function applyPollingSettings(settings, { restart = false } = {}) {
+            // [Phase 3 兼容] 任一开关开启即启用轮询：
+            // - enable_auto_polling：合并后的统一开关
+            // - enable_compact_auto_poll：deprecated 旧字段，历史用户可能只设置了这个
+            autoPollingEnabled = isAutoPollingEnabledSetting(settings.enable_auto_polling)
+                || isAutoPollingEnabledSetting(settings.enable_compact_auto_poll);
+            maxPollingCount = parseIntegerSetting(settings.polling_count, 5);
+            pollingInterval = parseIntegerSetting(settings.polling_interval, 10);
+            // [Phase 3] 合并后统一由标准字段驱动引擎
+            if (typeof applyPollSettings === 'function') {
+                applyPollSettings({
+                    enabled: autoPollingEnabled,
+                    interval: pollingInterval,
+                    maxCount: maxPollingCount
+                });
             }
-
-            if (!autoPollingEnabled) {
-                if (isPolling) {
-                    stopPolling(true);
-                }
-                return;
-            }
-
-            const cacheKey = `${currentAccount}_${currentFolder}`;
-            const hasCachedEmails = Object.prototype.hasOwnProperty.call(emailListCache, cacheKey);
-            const cachedEmails = hasCachedEmails ? emailListCache[cacheKey].emails : null;
-
-            if (restart && isPolling) {
-                stopPolling(true);
-            }
-
-            if (isPolling) {
-                return;
-            }
-
-            if (forceRefresh || !hasCachedEmails) {
-                loadEmails(currentAccount, forceRefresh);
-                return;
-            }
-
-            if (Array.isArray(cachedEmails)) {
-                currentEmails = cachedEmails;
-            }
-
-            startPolling();
         }
 
-        function applyPollingSettings(settings, { restart = false, forceRefresh = false } = {}) {
-            autoPollingEnabled = isAutoPollingEnabledSetting(settings.enable_auto_polling);
-            pollingInterval = parseIntegerSetting(settings.polling_interval, 10);
-            maxPollingCount = parseIntegerSetting(settings.polling_count, 5);
-            syncPollingForCurrentAccount({ restart, forceRefresh });
+        // ==================== 标准模式轮询指示器 ====================
+        // 在标准模式下，在账号卡片邮箱地址旁显示/隐藏轮询绿点。
+        // 由统一轮询引擎通过 UI 回调调用（mailbox_compact.js 中根据 mailboxViewMode 分发）。
+
+        function showStandardPollDot(email) {
+            if (!email) return;
+            var allCards = document.querySelectorAll('#accountList .account-card');
+            allCards.forEach(function(card) {
+                var emailEl = card.querySelector('.account-email');
+                if (emailEl && emailEl.textContent.trim() === email) {
+                    // 在 .account-info 容器中添加状态行（避免 .account-email 的 overflow:hidden 裁剪）
+                    var infoEl = card.querySelector('.account-info');
+                    if (infoEl && !infoEl.querySelector('.standard-poll-status')) {
+                        var statusEl = document.createElement('div');
+                        statusEl.className = 'standard-poll-status';
+                        statusEl.innerHTML = '<span class="standard-poll-dot"></span>' + translateAppTextLocal('轮询监听中…');
+                        infoEl.appendChild(statusEl);
+                    }
+                    // 给卡片加上边框高亮
+                    card.classList.add('standard-poll-active');
+                }
+            });
+        }
+
+        function hideStandardPollDot(email) {
+            if (email) {
+                var allCards = document.querySelectorAll('#accountList .account-card');
+                allCards.forEach(function(card) {
+                    var emailEl = card.querySelector('.account-email');
+                    if (emailEl && emailEl.textContent.trim() === email) {
+                        var infoEl = card.querySelector('.account-info');
+                        if (infoEl) {
+                            var statusEl = infoEl.querySelector('.standard-poll-status');
+                            if (statusEl) statusEl.remove();
+                        }
+                        card.classList.remove('standard-poll-active');
+                    }
+                });
+            } else {
+                // 无参数时清除所有
+                document.querySelectorAll('.standard-poll-status').forEach(function(el) { el.remove(); });
+                document.querySelectorAll('.standard-poll-active').forEach(function(el) { el.classList.remove('standard-poll-active'); });
+            }
         }
 
         // ==================== 主题 & 导航 ====================
@@ -527,7 +542,12 @@
 
         // ==================== Dashboard ====================
 
+        let _dashboardLoading = false;
+
         async function loadDashboard() {
+            // Bug 3 修复：防重入，避免 dashboard 被多次并发触发导致重复轮询
+            if (_dashboardLoading) return;
+            _dashboardLoading = true;
             try {
                 const [groupsRes, tempRes] = await Promise.all([
                     fetch('/api/groups'),
@@ -606,6 +626,8 @@
                 }
             } catch (e) {
                 console.error('Dashboard load error:', e);
+            } finally {
+                _dashboardLoading = false;
             }
         }
 
@@ -1429,202 +1451,6 @@ ${details}
             return formatUiDateTime(dateStr, { fallback: dateStr || '' });
         }
 
-        // ==================== OAuth Refresh Token 相关 ====================
-
-        let oauthAuthPopup = null;
-
-        window.addEventListener('message', function (event) {
-            if (!event || event.origin !== window.location.origin) {
-                return;
-            }
-
-            const payload = event.data || {};
-            if (payload.type !== 'outlook-oauth-callback') {
-                return;
-            }
-
-            const redirectInput = document.getElementById('redirectUrlInput');
-            if (!redirectInput) {
-                return;
-            }
-
-            if (payload.redirected_url) {
-                redirectInput.value = payload.redirected_url;
-            }
-
-            event.source?.postMessage({ type: 'outlook-oauth-callback-ack' }, event.origin);
-
-            if (payload.error) {
-                showToast(`${translateAppTextLocal('微软授权失败')}: ${payload.error_description || payload.error}`, 'error');
-                return;
-            }
-
-            const passwordInput = document.getElementById('oauthVerifyPassword');
-            showToast(translateAppTextLocal('已自动接收微软授权回跳结果，请确认后换取 Token'), 'success');
-            if (passwordInput && passwordInput.value.trim()) {
-                exchangeToken();
-            }
-        });
-
-        // 显示获取 Refresh Token 模态框
-        async function showGetRefreshTokenModal() {
-            document.getElementById('getRefreshTokenModal').classList.add('show');
-
-            // 重置表单
-            document.getElementById('oauthVerifyPassword').value = '';
-            document.getElementById('oauthClientIdInput').value = '';
-            document.getElementById('oauthRedirectUriInput').value = '';
-            document.getElementById('oauthRedirectUriExample').textContent = '';
-            document.getElementById('oauthRedirectUriWarning').style.display = 'none';
-            document.getElementById('oauthRedirectUriWarning').textContent = '';
-            document.getElementById('redirectUrlInput').value = '';
-            document.getElementById('refreshTokenResult').style.display = 'none';
-            document.getElementById('refreshTokenOutput').value = '';
-
-            // 重置按钮状态
-            const btn = document.getElementById('exchangeTokenBtn');
-            btn.disabled = false;
-            btn.textContent = '换取 Token';
-            btn.style.display = '';
-
-            // 获取授权 URL
-            try {
-                const response = await fetch('/api/oauth/auth-url');
-                const data = await response.json();
-
-                if (data.success) {
-                    document.getElementById('authUrlInput').value = data.auth_url;
-                    document.getElementById('oauthClientIdInput').value = `client_id：${data.client_id}`;
-                    document.getElementById('oauthRedirectUriInput').value = `redirect_uri：${data.redirect_uri}`;
-                    document.getElementById('oauthRedirectUriExample').textContent = `${data.redirect_uri}?code=xxxxx&state=<generated-by-system>`;
-                    if (data.redirect_uri_warning) {
-                        const warningEl = document.getElementById('oauthRedirectUriWarning');
-                        warningEl.textContent = data.redirect_uri_warning;
-                        warningEl.style.display = 'block';
-                    }
-                } else {
-                    handleApiError(data, '获取授权链接失败');
-                }
-            } catch (error) {
-                showToast(translateAppTextLocal('获取授权链接失败'), 'error');
-            }
-        }
-
-        // 隐藏获取 Refresh Token 模态框
-        function hideGetRefreshTokenModal() {
-            document.getElementById('getRefreshTokenModal').classList.remove('show');
-            if (oauthAuthPopup && !oauthAuthPopup.closed) {
-                oauthAuthPopup.close();
-            }
-            oauthAuthPopup = null;
-        }
-
-        // 复制授权 URL
-        function copyAuthUrl() {
-            const input = document.getElementById('authUrlInput');
-            input.select();
-            document.execCommand('copy');
-            showToast(translateAppTextLocal('授权链接已复制到剪贴板'), 'success');
-        }
-
-        // 打开授权 URL
-        function openAuthUrl() {
-            const url = document.getElementById('authUrlInput').value;
-            if (url) {
-                oauthAuthPopup = window.open(url, 'outlook-oauth-popup', 'width=720,height=860');
-                if (oauthAuthPopup) {
-                    showToast(translateAppTextLocal('已在新窗口打开授权页面'), 'info');
-                } else {
-                    showToast(translateAppTextLocal('浏览器拦截了授权窗口，请允许弹窗后重试，或复制授权链接手动打开'), 'error');
-                }
-            }
-        }
-
-        // 换取 Token
-        async function exchangeToken() {
-            const redirectUrl = document.getElementById('redirectUrlInput').value.trim();
-            const password = document.getElementById('oauthVerifyPassword').value;
-
-            if (!redirectUrl) {
-                showToast(translateAppTextLocal('请先粘贴授权后的完整 URL'), 'error');
-                return;
-            }
-
-            if (!password) {
-                showToast(translateAppTextLocal('请输入当前系统登录密码以完成二次验证'), 'error');
-                document.getElementById('oauthVerifyPassword').focus();
-                return;
-            }
-
-            const btn = document.getElementById('exchangeTokenBtn');
-            btn.disabled = true;
-            btn.textContent = '⏳ 换取中...';
-
-            try {
-                const verifyResponse = await fetch('/api/export/verify', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({
-                        password
-                    })
-                });
-                const verifyData = await verifyResponse.json();
-
-                if (!verifyData.success) {
-                    handleApiError(verifyData, '二次验证失败');
-                    if (verifyData.need_verify) {
-                        document.getElementById('oauthVerifyPassword').focus();
-                    }
-                    btn.disabled = false;
-                    btn.textContent = '换取 Token';
-                    return;
-                }
-
-                const response = await fetch('/api/oauth/exchange-token', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({
-                        redirected_url: redirectUrl,
-                        verify_token: verifyData.verify_token
-                    })
-                });
-
-                const data = await response.json();
-
-                if (data.success) {
-                    btn.disabled = false;
-                    btn.textContent = '换取 Token';
-
-                    // 关闭 Token 弹窗，打开添加账号弹窗并预填充
-                    hideGetRefreshTokenModal();
-                    showAddAccountModal();
-
-                    const inputEl = document.getElementById('accountInput');
-                    if (inputEl) {
-                        inputEl.value = `your@outlook.com----yourpassword----${data.client_id}----${data.refresh_token}`;
-                        inputEl.select();
-                    }
-
-                    showToast(translateAppTextLocal('✅ Token 获取成功！请将邮箱和密码替换后点导入'), 'success');
-                } else {
-                    handleApiError(data, '换取 Token 失败');
-                    if (data.need_verify) {
-                        document.getElementById('oauthVerifyPassword').focus();
-                    }
-                    btn.disabled = false;
-                    btn.textContent = '换取 Token';
-                }
-            } catch (error) {
-                showToast(`${translateAppTextLocal('换取 Token 失败')}: ${error.message}`, 'error');
-                btn.disabled = false;
-                btn.textContent = '换取 Token';
-            }
-        }
-
         // ==================== 设置相关 ====================
 
         // 显示设置模态框
@@ -1693,16 +1519,60 @@ ${details}
                     // 密码不回显
                     document.getElementById('settingsPassword').value = '';
 
-                    // GPTMail API Key（仅脱敏展示，避免回填明文）
-                    const gptmailApiKeyEl = document.getElementById('settingsApiKey');
-                    if (gptmailApiKeyEl) {
-                        const maskedValue = data.settings.gptmail_api_key_masked || '';
-                        gptmailApiKeyEl.value = maskedValue;
-                        gptmailApiKeyEl.dataset.maskedValue = maskedValue;
-                        gptmailApiKeyEl.dataset.isSet = data.settings.gptmail_api_key_set ? 'true' : 'false';
+                    const tempMailProviderEl = document.getElementById('settingsTempMailProvider');
+                    if (tempMailProviderEl) {
+                        // 兼容旧值（custom_domain_temp_mail → legacy_bridge）
+                        const rawProvider = data.settings.temp_mail_provider || 'legacy_bridge';
+                        const mappedProvider = (rawProvider === 'custom_domain_temp_mail' || rawProvider === 'legacy_bridge' || rawProvider === 'legacy_gptmail' || rawProvider === 'gptmail')
+                            ? 'legacy_bridge'
+                            : rawProvider;
+                        tempMailProviderEl.value = mappedProvider;
                     }
 
-                    // 对外开放 API Key（仅脱敏展示，避免回填明文）
+                    const tempMailApiBaseUrlEl = document.getElementById('settingsTempMailApiBaseUrl');
+                    if (tempMailApiBaseUrlEl) {
+                        tempMailApiBaseUrlEl.value = data.settings.temp_mail_api_base_url || '';
+                    }
+
+                    // 临时邮箱 API Key（仅脱敏展示，避免回填明文）
+                    const tempMailApiKeyEl = document.getElementById('settingsApiKey');
+                    if (tempMailApiKeyEl) {
+                        const maskedValue = data.settings.temp_mail_api_key_masked || '';
+                        tempMailApiKeyEl.value = maskedValue;
+                        tempMailApiKeyEl.dataset.maskedValue = maskedValue;
+                        tempMailApiKeyEl.dataset.isSet = data.settings.temp_mail_api_key_set ? 'true' : 'false';
+                    }
+
+                    const tempMailDomainsEl = document.getElementById('settingsTempMailDomains');
+                    if (tempMailDomainsEl) {
+                        const domains = Array.isArray(data.settings.temp_mail_domains) ? data.settings.temp_mail_domains : [];
+                        tempMailDomainsEl.value = domains.length ? JSON.stringify(domains, null, 2) : '';
+                    }
+
+                    const tempMailDefaultDomainEl = document.getElementById('settingsTempMailDefaultDomain');
+                    if (tempMailDefaultDomainEl) {
+                        tempMailDefaultDomainEl.value = data.settings.temp_mail_default_domain || '';
+                    }
+
+                    const tempMailPrefixRulesEl = document.getElementById('settingsTempMailPrefixRules');
+                    if (tempMailPrefixRulesEl) {
+                        const prefixRules = data.settings.temp_mail_prefix_rules || {};
+                        tempMailPrefixRulesEl.value = Object.keys(prefixRules).length ? JSON.stringify(prefixRules, null, 2) : '';
+                    }
+
+                    // CF Worker 独立配置
+                    const cfWorkerBaseUrlEl = document.getElementById('settingsCfWorkerBaseUrl');
+                    if (cfWorkerBaseUrlEl) {
+                        cfWorkerBaseUrlEl.value = data.settings.cf_worker_base_url || '';
+                    }
+
+                    const cfWorkerAdminKeyEl = document.getElementById('settingsCfWorkerAdminKey');
+                    if (cfWorkerAdminKeyEl) {
+                        const cfMasked = data.settings.cf_worker_admin_key_masked || '';
+                        cfWorkerAdminKeyEl.value = cfMasked;
+                        cfWorkerAdminKeyEl.dataset.maskedValue = cfMasked;
+                        cfWorkerAdminKeyEl.dataset.isSet = data.settings.cf_worker_admin_key_set ? 'true' : 'false';
+                    }
                     const externalApiKeyEl = document.getElementById('settingsExternalApiKey');
                     if (externalApiKeyEl) {
                         const maskedValue = data.settings.external_api_key_masked || '';
@@ -1771,10 +1641,15 @@ ${details}
                     toggleRefreshStrategy();
 
                     // 加载轮询设置（后端返回 boolean，兼容处理）
-                    const enablePolling = isAutoPollingEnabledSetting(data.settings.enable_auto_polling);
+                    // [Phase 3 兼容] 任一开关开启，设置面板复选框就显示为勾选状态
+                    const enablePolling = isAutoPollingEnabledSetting(data.settings.enable_auto_polling)
+                        || isAutoPollingEnabledSetting(data.settings.enable_compact_auto_poll);
                     document.getElementById('enableAutoPolling').checked = enablePolling;
                     document.getElementById('pollingInterval').value = String(parseIntegerSetting(data.settings.polling_interval, 10));
                     document.getElementById('pollingCount').value = String(parseIntegerSetting(data.settings.polling_count, 5));
+
+                    // [Phase 3] 简洁模式独立面板已合并，使用统一引擎配置
+                    applyPollingSettings(data.settings);
 
                     // 加载 Telegram 推送设置
                     const tgToken = document.getElementById('telegramBotToken');
@@ -1854,10 +1729,16 @@ ${details}
         async function saveSettings() {
             const password = document.getElementById('settingsPassword').value;
 
-            const gptmailApiKeyEl = document.getElementById('settingsApiKey');
-            const gptmailApiKey = gptmailApiKeyEl ? gptmailApiKeyEl.value.trim() : '';
-            const gptmailApiKeyMasked = gptmailApiKeyEl ? (gptmailApiKeyEl.dataset.maskedValue || '') : '';
-            const gptmailApiKeyIsSet = gptmailApiKeyEl ? gptmailApiKeyEl.dataset.isSet === 'true' : false;
+            const tempMailProviderEl = document.getElementById('settingsTempMailProvider');
+            const tempMailApiBaseUrlEl = document.getElementById('settingsTempMailApiBaseUrl');
+            const tempMailApiKeyEl = document.getElementById('settingsApiKey');
+            const tempMailDomainsEl = document.getElementById('settingsTempMailDomains');
+            const tempMailDefaultDomainEl = document.getElementById('settingsTempMailDefaultDomain');
+            const tempMailPrefixRulesEl = document.getElementById('settingsTempMailPrefixRules');
+
+            const tempMailApiKey = tempMailApiKeyEl ? tempMailApiKeyEl.value.trim() : '';
+            const tempMailApiKeyMasked = tempMailApiKeyEl ? (tempMailApiKeyEl.dataset.maskedValue || '') : '';
+            const tempMailApiKeyIsSet = tempMailApiKeyEl ? tempMailApiKeyEl.dataset.isSet === 'true' : false;
 
             const externalApiKeyEl = document.getElementById('settingsExternalApiKey');
             const externalApiKey = externalApiKeyEl ? externalApiKeyEl.value.trim() : '';
@@ -1889,9 +1770,61 @@ ${details}
                 settings.login_password = password;
             }
 
-            // GPTMail API Key：仅当用户真实输入时才覆盖（避免把脱敏占位符写回 DB）
-            if (!(gptmailApiKeyIsSet && gptmailApiKey && gptmailApiKey === gptmailApiKeyMasked)) {
-                settings.gptmail_api_key = gptmailApiKey;
+            settings.temp_mail_provider = tempMailProviderEl ? (tempMailProviderEl.value.trim() || 'legacy_bridge') : 'legacy_bridge';
+            settings.temp_mail_api_base_url = tempMailApiBaseUrlEl ? tempMailApiBaseUrlEl.value.trim() : '';
+            settings.temp_mail_default_domain = tempMailDefaultDomainEl ? tempMailDefaultDomainEl.value.trim() : '';
+
+            if (tempMailDomainsEl) {
+                const rawDomains = tempMailDomainsEl.value.trim();
+                if (rawDomains) {
+                    try {
+                        settings.temp_mail_domains = JSON.parse(rawDomains);
+                    } catch (error) {
+                        showToast(translateAppTextLocal('临时邮箱域名配置必须是合法 JSON'), 'error');
+                        return;
+                    }
+                } else {
+                    settings.temp_mail_domains = [];
+                }
+            }
+
+            if (tempMailPrefixRulesEl) {
+                const rawPrefixRules = tempMailPrefixRulesEl.value.trim();
+                if (rawPrefixRules) {
+                    try {
+                        settings.temp_mail_prefix_rules = JSON.parse(rawPrefixRules);
+                    } catch (error) {
+                        showToast(translateAppTextLocal('临时邮箱前缀规则必须是合法 JSON'), 'error');
+                        return;
+                    }
+                } else {
+                    settings.temp_mail_prefix_rules = {
+                        min_length: 1,
+                        max_length: 32,
+                        pattern: '^[a-z0-9][a-z0-9._-]*$'
+                    };
+                }
+            }
+
+            // 临时邮箱 API Key：仅当用户真实输入时才覆盖（避免把脱敏占位符写回 DB）
+            if (!(tempMailApiKeyIsSet && tempMailApiKey && tempMailApiKey === tempMailApiKeyMasked)) {
+                settings.temp_mail_api_key = tempMailApiKey;
+            }
+
+            // CF Worker 独立配置
+            const cfWorkerBaseUrlEl = document.getElementById('settingsCfWorkerBaseUrl');
+            const cfWorkerAdminKeyEl = document.getElementById('settingsCfWorkerAdminKey');
+            if (cfWorkerBaseUrlEl) {
+                settings.cf_worker_base_url = cfWorkerBaseUrlEl.value.trim();
+            }
+            if (cfWorkerAdminKeyEl) {
+                const cfKey = cfWorkerAdminKeyEl.value.trim();
+                const cfKeyMasked = cfWorkerAdminKeyEl.dataset.maskedValue || '';
+                const cfKeyIsSet = cfWorkerAdminKeyEl.dataset.isSet === 'true';
+                // 仅当用户真实输入时才覆盖（避免把脱敏占位符写回 DB）
+                if (!(cfKeyIsSet && cfKey && cfKey === cfKeyMasked)) {
+                    settings.cf_worker_admin_key = cfKey;
+                }
             }
 
             // 对外开放 API Key：允许清空（空字符串）
@@ -1999,8 +1932,8 @@ ${details}
             const pInterval = parseInt(pollingInterval);
             const pCount = parseInt(pollingCount);
 
-            if (isNaN(pInterval) || pInterval < 5 || pInterval > 300) {
-                showToast(translateAppTextLocal('轮询间隔必须在 5-300 秒之间'), 'error');
+            if (isNaN(pInterval) || pInterval < 3 || pInterval > 300) {
+                showToast(translateAppTextLocal('轮询间隔必须在 3-300 秒之间'), 'error');
                 return;
             }
 
@@ -2015,6 +1948,12 @@ ${details}
             settings.polling_count = pCount;
             settings.email_notification_enabled = emailNotificationEnabled;
             settings.email_notification_recipient = emailNotificationRecipient;
+
+            // [Phase 3] 简洁模式独立配置已合并，统一通过标准字段传递
+            // 向后端同步 compact 字段（deprecated 兼容），镜像标准字段值
+            settings.enable_compact_auto_poll   = enablePolling;
+            settings.compact_poll_interval      = pInterval;
+            settings.compact_poll_max_count     = pCount;
 
             // Telegram 推送配置
             const tgBotTokenEl = document.getElementById('telegramBotToken');
@@ -2049,6 +1988,7 @@ ${details}
 
                 if (data.success) {
                     applyPollingSettings(settings, { restart: true });
+                    // [Phase 3] applyPollingSettings 已内含引擎同步，无需额外调用
                     showToast(pickApiMessage(data, '设置已保存，重启应用后生效', 'Settings saved successfully'), 'success');
                     hideSettingsModal();
                 } else {
@@ -2104,301 +2044,11 @@ ${details}
                 const data = await response.json();
 
                 if (data.success) {
+                    // [Phase 3] 统一使用 applyPollingSettings（内部已调用引擎 applyPollSettings）
                     applyPollingSettings(data.settings);
                 }
             } catch (error) {
                 console.error('初始化轮询设置失败:', error);
-            }
-        }
-
-        // 开始轮询
-        function startPolling() {
-            if (isPolling || !currentAccount) {
-                console.log('[轮询] 无法启动: isPolling=', isPolling, ', currentAccount=', currentAccount);
-                return;
-            }
-
-            isPolling = true;
-            pollingCount = 0;
-            pollingErrorCount = 0; // 重置错误计数
-
-            // 初始化已知邮件ID集合
-            knownEmailIds = new Set(currentEmails.map(email => email.id));
-
-            console.log('[轮询] 已启动，间隔:', pollingInterval, '秒，最大次数:', maxPollingCount);
-
-            // 显示轮询状态指示器
-            showPollingStatusIndicator();
-
-            // 立即执行一次
-            pollForNewEmails();
-
-            // 设置定时器
-            pollingTimer = setInterval(pollForNewEmails, pollingInterval * 1000);
-        }
-
-        // 显示轮询状态指示器
-        function showPollingStatusIndicator() {
-            let indicator = document.getElementById('pollingStatusIndicator');
-            if (!indicator) {
-                indicator = document.createElement('div');
-                indicator.id = 'pollingStatusIndicator';
-                indicator.style.cssText = `
-                    position: fixed;
-                    bottom: 24px;
-                    right: 24px;
-                    background-color: #28a745;
-                    color: white;
-                    padding: 8px 16px;
-                    border-radius: 20px;
-                    font-size: 12px;
-                    font-weight: 500;
-                    box-shadow: 0 2px 8px rgba(40, 167, 69, 0.3);
-                    z-index: 1000;
-                    display: flex;
-                    align-items: center;
-                    gap: 8px;
-                    cursor: pointer;
-                `;
-                indicator.innerHTML = `<span style="animation: pulse 1.5s infinite;">🔄</span> ${translateAppTextLocal('轮询中')}`;
-                indicator.onclick = () => {
-                    if (confirm('是否停止轮询？')) {
-                        stopPolling(false);
-                    }
-                };
-                document.body.appendChild(indicator);
-            }
-            indicator.style.display = 'flex';
-        }
-
-        // 隐藏轮询状态指示器
-        function hidePollingStatusIndicator() {
-            const indicator = document.getElementById('pollingStatusIndicator');
-            if (indicator) {
-                indicator.style.display = 'none';
-            }
-        }
-
-        // 停止轮询
-        function stopPolling(silent = false) {
-            console.log('[轮询] 停止轮询, silent=', silent);
-            if (pollingTimer) {
-                clearInterval(pollingTimer);
-                pollingTimer = null;
-            }
-            isPolling = false;
-            pollingCount = 0;
-            pollingErrorCount = 0;
-            hideNewEmailIndicator();
-            hideAccountNewEmailDot();
-            hidePollingStatusIndicator();
-            // 用户主动停止时显示提示
-            if (!silent) {
-                showToast(translateAppTextLocal('已停止轮询'), 'info');
-            }
-        }
-
-        // 轮询检查新邮件
-        let pollingErrorCount = 0; // 连续错误计数
-        const MAX_POLLING_ERRORS = 3; // 最大连续错误次数
-
-        async function pollForNewEmails() {
-            if (!currentAccount) {
-                stopPolling(true);
-                return;
-            }
-
-            pollingCount++;
-
-            try {
-                const response = await fetch(`/api/emails/${encodeURIComponent(currentAccount)}?skip=0&top=10&folder=${currentFolder}`);
-                const data = await response.json();
-
-                if (data.success && data.emails) {
-                    pollingErrorCount = 0; // 重置错误计数
-                    const newEmails = data.emails.filter(email => !knownEmailIds.has(email.id));
-
-                    if (newEmails.length > 0) {
-                        // 发现新邮件
-                        showNewEmailNotification(newEmails);
-
-                        // 更新已知邮件ID集合
-                        newEmails.forEach(email => knownEmailIds.add(email.id));
-
-                        // 更新邮件列表（在现有列表前面插入新邮件）
-                        currentEmails = [...newEmails, ...currentEmails];
-                        renderEmailList(currentEmails);
-                        document.getElementById('emailCount').textContent = `(${currentEmails.length})`;
-
-                        // 显示新邮件指示器（账号列表项红点）
-                        showAccountNewEmailDot(newEmails.length);
-                    }
-                } else {
-                    pollingErrorCount++;
-                }
-            } catch (error) {
-                console.error('轮询新邮件失败:', error);
-                pollingErrorCount++;
-            }
-
-            // 连续错误超过阈值，停止轮询并提示
-            if (pollingErrorCount >= MAX_POLLING_ERRORS) {
-                stopPolling(true);
-                showToast(translateAppTextLocal('轮询连续失败，已自动停止'), 'error');
-                return;
-            }
-
-            // 检查是否达到最大轮询次数（0 表示持续轮询，不检查次数）
-            if (maxPollingCount > 0 && pollingCount >= maxPollingCount) {
-                stopPolling(true);
-            }
-        }
-
-        // 显示新邮件通知（包含邮箱地址和邮件主题）
-        function showNewEmailNotification(newEmails) {
-            const count = newEmails.length;
-            const firstEmail = newEmails[0];
-            const subject = firstEmail?.subject || translateAppTextLocal('无主题');
-            const language = getUiLanguage();
-
-            // 请求浏览器通知权限
-            if ('Notification' in window && Notification.permission === 'granted') {
-                const title = language === 'en'
-                    ? (count === 1 ? `New email - ${currentAccount}` : `New emails (${count}) - ${currentAccount}`)
-                    : (count === 1 ? `新邮件 - ${currentAccount}` : `新邮件 (${count}封) - ${currentAccount}`);
-                const body = language === 'en'
-                    ? (count === 1 ? subject : `${subject} and ${count} new emails`)
-                    : (count === 1 ? subject : `${subject} 等 ${count} 封新邮件`);
-                new Notification(title, {
-                    body: body,
-                    icon: '/img/ico.png'
-                });
-            } else if ('Notification' in window && Notification.permission !== 'denied') {
-                Notification.requestPermission();
-            }
-
-            // 显示页面内通知（包含邮箱和主题）
-            const message = language === 'en'
-                ? (count === 1 ? `📬 ${currentAccount}: ${subject}` : `📬 ${currentAccount}: ${subject} and ${count} new emails`)
-                : (count === 1 ? `📬 ${currentAccount}: ${subject}` : `📬 ${currentAccount}: ${subject} 等 ${count} 封新邮件`);
-            showToast(message, 'success');
-        }
-
-        // 显示账号列表项上的红点
-        function showAccountNewEmailDot(count) {
-            // 在当前选中的账号项上显示红点
-            const activeItem = document.querySelector('.account-card.active');
-            if (activeItem) {
-                let dot = activeItem.querySelector('.new-email-badge');
-                if (!dot) {
-                    dot = document.createElement('span');
-                    dot.className = 'new-email-badge';
-                    dot.style.cssText = `
-                        position: absolute;
-                        top: 8px;
-                        right: 8px;
-                        background-color: #dc3545;
-                        color: white;
-                        padding: 2px 6px;
-                        border-radius: 10px;
-                        font-size: 11px;
-                        font-weight: 500;
-                        min-width: 18px;
-                        text-align: center;
-                    `;
-                    activeItem.style.position = 'relative';
-                    activeItem.appendChild(dot);
-                }
-                dot.textContent = count;
-                dot.style.display = 'block';
-            }
-
-            // 同时保留右上角指示器（作为备用）
-            showNewEmailIndicator(count);
-        }
-
-        // 隐藏账号列表项上的红点
-        function hideAccountNewEmailDot() {
-            const dots = document.querySelectorAll('.new-email-badge');
-            dots.forEach(dot => dot.style.display = 'none');
-        }
-
-        // 显示新邮件指示器（红点）- 移到右下角
-        function showNewEmailIndicator(count) {
-            let indicator = document.getElementById('newEmailIndicator');
-            if (!indicator) {
-                indicator = document.createElement('div');
-                indicator.id = 'newEmailIndicator';
-                indicator.style.cssText = `
-                    position: fixed;
-                    bottom: 70px;
-                    right: 24px;
-                    background-color: #dc3545;
-                    color: white;
-                    padding: 8px 16px;
-                    border-radius: 20px;
-                    font-size: 13px;
-                    font-weight: 500;
-                    box-shadow: 0 2px 8px rgba(220, 53, 69, 0.3);
-                    z-index: 1000;
-                    cursor: pointer;
-                    display: flex;
-                    align-items: center;
-                    gap: 8px;
-                    animation: slideIn 0.3s ease;
-                `;
-                indicator.innerHTML = `<span class="new-email-dot"></span> 新邮件 (${count})`;
-                indicator.onclick = () => {
-                    hideNewEmailIndicator();
-                    hideAccountNewEmailDot();
-                    // 滚动到邮件列表顶部
-                    document.getElementById('emailList').scrollTop = 0;
-                };
-                document.body.appendChild(indicator);
-
-                // 添加动画样式
-                if (!document.getElementById('newEmailIndicatorStyles')) {
-                    const style = document.createElement('style');
-                    style.id = 'newEmailIndicatorStyles';
-                    style.textContent = `
-                        @keyframes slideIn {
-                            from { transform: translateX(100%); opacity: 0; }
-                            to { transform: translateX(0); opacity: 1; }
-                        }
-                        .new-email-dot {
-                            width: 8px;
-                            height: 8px;
-                            background-color: white;
-                            border-radius: 50%;
-                            animation: pulse 1.5s infinite;
-                        }
-                        @keyframes pulse {
-                            0%, 100% { opacity: 1; }
-                            50% { opacity: 0.5; }
-                        }
-                    `;
-                    document.head.appendChild(style);
-                }
-            } else {
-                indicator.innerHTML = `<span class="new-email-dot"></span> 新邮件 (${count})`;
-                indicator.style.display = 'flex';
-            }
-        }
-
-        // 隐藏新邮件指示器
-        function hideNewEmailIndicator() {
-            const indicator = document.getElementById('newEmailIndicator');
-            if (indicator) {
-                indicator.style.display = 'none';
-            }
-        }
-
-        // 切换轮询状态
-        function togglePolling() {
-            if (isPolling) {
-                stopPolling();
-            } else {
-                startPolling();
             }
         }
 
@@ -2970,7 +2620,6 @@ ${details}
             hideRefreshModal();
             hideRefreshErrorModal();
             hideErrorDetailModal();
-            hideGetRefreshTokenModal();
             closeFullscreenEmail();
         }
 
@@ -2992,7 +2641,6 @@ ${details}
                 hideRefreshModal();
                 hideRefreshErrorModal();
                 hideErrorDetailModal();
-                hideGetRefreshTokenModal();
                 closeFullscreenEmail();
             }
         });

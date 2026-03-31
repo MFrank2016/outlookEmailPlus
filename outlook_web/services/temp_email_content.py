@@ -60,7 +60,7 @@ def build_inline_resource_map(payload: Any) -> Dict[str, str]:
     """
     从上游 payload 中提取内联图片资源。
 
-    官方 GPTMail 文档当前只明确暴露 html/content 字段；这里兼容未文档化但可能出现的
+    legacy 临时邮箱 bridge 文档当前只明确暴露 html/content 字段；这里兼容未文档化但可能出现的
     attachments / inline_images / cid_map 等结构，至少为后续扩展保留链路。
     """
     payload_dict = load_temp_email_payload(payload)

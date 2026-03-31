@@ -47,6 +47,17 @@ Dockerfile
 docker-compose.yml
 .dockerignore
 
-# 文档
-README.md
+# 文档与杂项
 *.md
+*.pdf
+docs/
+img/
+
+# CF 部署脚本（不打包进镜像）
+cf-deploy/
+
+# 其他无关目录
+.codex/
+.github/
+.opencode/
+exeample/

@@ -90,19 +90,19 @@ class TestExportEnhancedV2(unittest.TestCase):
             content = _build_export_text(accounts)
             self.assertIn("a@corp.com----pwd----custom----mail.corp.com----995", content)
 
-    def test_build_export_text_v2_gptmail_section(self):
-        """GPTMail 分段仅邮箱地址"""
+    def test_build_export_text_v2_temp_mail_section(self):
+        """临时邮箱分段仅邮箱地址"""
         with self.app.app_context():
             from outlook_web.controllers.accounts import _build_export_text
 
-            temp_emails = [{"email": "t1@gptmail.com"}, {"email": "t2@gptmail.com"}]
+            temp_emails = [{"email": "t1@temp.example"}, {"email": "t2@temp.example"}]
             content = _build_export_text([], temp_emails)
-            self.assertIn("# === 临时邮箱（GPTMail）===", content)
-            self.assertIn("t1@gptmail.com", content)
-            self.assertIn("t2@gptmail.com", content)
-            # GPTMail 行不应包含 ----
+            self.assertIn("# === 临时邮箱（自建）===", content)
+            self.assertIn("t1@temp.example", content)
+            self.assertIn("t2@temp.example", content)
+            # 临时邮箱行不应包含 ----
             for line in content.split("\n"):
-                if "@gptmail.com" in line and not line.startswith("#"):
+                if "@temp.example" in line and not line.startswith("#"):
                     self.assertNotIn("----", line)
 
     def test_build_export_text_v2_mixed_counts(self):
@@ -129,7 +129,7 @@ class TestExportEnhancedV2(unittest.TestCase):
                 },
                 {"email": "c@gmail.com", "imap_password": "ip", "account_type": "imap", "provider": "gmail"},
             ]
-            temp_emails = [{"email": "t@gptmail.com"}]
+            temp_emails = [{"email": "t@temp.example"}]
             content = _build_export_text(accounts, temp_emails)
             self.assertIn("# 账号总数：4", content)
             self.assertIn("Outlook：2", content)

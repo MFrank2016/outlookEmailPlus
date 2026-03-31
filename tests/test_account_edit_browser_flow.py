@@ -15,11 +15,104 @@ except Exception:
     PLAYWRIGHT_AVAILABLE = False
 
 
+_UNSAFE_BROWSER_PORTS = {
+    1,
+    7,
+    9,
+    11,
+    13,
+    15,
+    17,
+    19,
+    20,
+    21,
+    22,
+    23,
+    25,
+    37,
+    42,
+    43,
+    53,
+    77,
+    79,
+    87,
+    95,
+    101,
+    102,
+    103,
+    104,
+    109,
+    110,
+    111,
+    113,
+    115,
+    117,
+    119,
+    123,
+    135,
+    137,
+    139,
+    143,
+    161,
+    179,
+    389,
+    427,
+    465,
+    512,
+    513,
+    514,
+    515,
+    526,
+    530,
+    531,
+    532,
+    540,
+    548,
+    554,
+    556,
+    563,
+    587,
+    601,
+    636,
+    989,
+    990,
+    993,
+    995,
+    1719,
+    1720,
+    1723,
+    2049,
+    3659,
+    4045,
+    5060,
+    5061,
+    6000,
+    6566,
+    6665,
+    6666,
+    6667,
+    6668,
+    6669,
+    6697,
+    10080,
+}
+
+
 class _LiveServerThread(threading.Thread):
     def __init__(self, app):
         super().__init__(daemon=True)
-        self._server = make_server("127.0.0.1", 0, app)
-        self.port = int(self._server.server_port)
+        self._server = None
+        self.port = None
+        for _ in range(20):
+            server = make_server("127.0.0.1", 0, app)
+            port = int(server.server_port)
+            if port not in _UNSAFE_BROWSER_PORTS:
+                self._server = server
+                self.port = port
+                break
+            server.server_close()
+        if self._server is None or self.port is None:
+            raise RuntimeError("failed to allocate a browser-safe test port")
 
     def run(self):
         self._server.serve_forever()
@@ -34,11 +127,27 @@ class AccountEditBrowserFlowTests(unittest.TestCase):
     def setUpClass(cls):
         cls.module = import_web_app_module()
         cls.app = cls.module.app
+        cls._server = None
+        cls._playwright = None
+        cls._browser = None
+
+        # 先检查 Playwright 二进制是否可用，避免先启动 server 再报错
+        try:
+            _pw = sync_playwright().start()
+        except Exception as exc:
+            raise unittest.SkipTest(f"playwright is unavailable: {exc}")
+
         cls._server = _LiveServerThread(cls.app)
         cls._server.start()
         cls.base_url = f"http://127.0.0.1:{cls._server.port}"
-        cls._playwright = sync_playwright().start()
-        cls._browser = cls._playwright.chromium.launch(headless=True)
+        cls._playwright = _pw
+        try:
+            cls._browser = _pw.chromium.launch(headless=True)
+        except Exception as exc:
+            _pw.stop()
+            cls._server.shutdown()
+            cls._server.join(timeout=5)
+            raise unittest.SkipTest(f"playwright chromium is unavailable: {exc}")
 
     @classmethod
     def tearDownClass(cls):
@@ -58,7 +167,9 @@ class AccountEditBrowserFlowTests(unittest.TestCase):
     def _default_group_id(self) -> int:
         conn = self.module.create_sqlite_connection()
         try:
-            row = conn.execute("SELECT id FROM groups WHERE name = '默认分组' LIMIT 1").fetchone()
+            row = conn.execute(
+                "SELECT id FROM groups WHERE name = '默认分组' LIMIT 1"
+            ).fetchone()
             return int(row["id"]) if row else 1
         finally:
             conn.close()
@@ -108,7 +219,9 @@ class AccountEditBrowserFlowTests(unittest.TestCase):
     def _get_account_row(self, account_id: int):
         conn = self.module.create_sqlite_connection()
         try:
-            return conn.execute("SELECT * FROM accounts WHERE id = ? LIMIT 1", (account_id,)).fetchone()
+            return conn.execute(
+                "SELECT * FROM accounts WHERE id = ? LIMIT 1", (account_id,)
+            ).fetchone()
         finally:
             conn.close()
 
@@ -135,7 +248,9 @@ class AccountEditBrowserFlowTests(unittest.TestCase):
             page.locator('.nav-item[data-page="mailbox"]').click()
             page.wait_for_load_state("networkidle")
 
-            account_card = page.locator(".account-card").filter(has_text=account["email"]).first
+            account_card = (
+                page.locator(".account-card").filter(has_text=account["email"]).first
+            )
             account_card.wait_for(timeout=10000)
             account_card.hover()
             account_card.locator('button[title="编辑"]').evaluate("(el) => el.click()")
@@ -147,7 +262,8 @@ class AccountEditBrowserFlowTests(unittest.TestCase):
             page.fill("#editRemark", new_remark)
 
             with page.expect_request(
-                lambda req: req.method == "PUT" and req.url.endswith(f"/api/accounts/{account['id']}")
+                lambda req: req.method == "PUT"
+                and req.url.endswith(f"/api/accounts/{account['id']}")
             ) as request_info:
                 page.locator("#editAccountModal button").filter(has_text="保存").click()
 
@@ -157,17 +273,25 @@ class AccountEditBrowserFlowTests(unittest.TestCase):
             self.assertEqual(payload.get("client_id"), "")
             self.assertEqual(payload.get("refresh_token"), "")
 
-            page.locator("#toast-container .toast.success").filter(has_text="账号更新成功").wait_for(timeout=10000)
-            page.wait_for_function("() => !document.getElementById('editAccountModal').classList.contains('show')")
-            page.locator(".account-card").filter(has_text=account["email"]).filter(has_text=new_remark).first.wait_for(
-                timeout=10000
+            page.locator("#toast-container .toast.success").filter(
+                has_text="账号更新成功"
+            ).wait_for(timeout=10000)
+            page.wait_for_function(
+                "() => !document.getElementById('editAccountModal').classList.contains('show')"
             )
+            page.locator(".account-card").filter(has_text=account["email"]).filter(
+                has_text=new_remark
+            ).first.wait_for(timeout=10000)
 
             row = self._get_account_row(account["id"])
             self.assertIsNotNone(row)
             self.assertEqual((row["remark"] or ""), new_remark)
             self.assertEqual(row["client_id"], account["client_id"])
-            self.assertEqual(self._decrypt_if_needed(row["password"]), account["password"])
-            self.assertEqual(self._decrypt_if_needed(row["refresh_token"]), account["refresh_token"])
+            self.assertEqual(
+                self._decrypt_if_needed(row["password"]), account["password"]
+            )
+            self.assertEqual(
+                self._decrypt_if_needed(row["refresh_token"]), account["refresh_token"]
+            )
         finally:
             context.close()

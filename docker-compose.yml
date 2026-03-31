@@ -1,0 +1,42 @@
+version: "3.9"
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: outlook-email-dev:latest
+    container_name: outlook-email-dev
+    ports:
+      - "5000:5000"
+    environment:
+      # Flask 核心配置
+      SECRET_KEY: "dev-secret-key-change-in-prod"
+      LOGIN_PASSWORD: "admin123"
+      ALLOW_LOGIN_PASSWORD_CHANGE: "true"
+
+      # 运行模式
+      FLASK_ENV: "production"
+      SCHEDULER_AUTOSTART: "true"
+
+      # 数据库路径（挂载 volume 保证持久化）
+      DATABASE_PATH: "/app/data/outlook_accounts.db"
+
+      # 临时邮箱配置（可按需修改）
+      GPTMAIL_BASE_URL: "https://mail.chatgpt.org.uk"
+      GPTMAIL_API_KEY: "gpt-test"
+
+    volumes:
+      # 持久化数据库和运行时文件
+      - ./data:/app/data
+      - ./.runtime:/app/.runtime
+
+    restart: unless-stopped
+
+    healthcheck:
+      test: ["CMD", "python", "-c",
+             "import urllib.request as u; u.urlopen('http://localhost:5000/healthz', timeout=4).read()"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s

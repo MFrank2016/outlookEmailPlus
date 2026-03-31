@@ -1,0 +1,140 @@
+from __future__ import annotations
+
+from typing import Any
+
+from outlook_web.repositories import accounts as accounts_repo
+from outlook_web.repositories import temp_emails as temp_emails_repo
+from outlook_web.security.auth import get_external_api_consumer
+
+
+def _external_api_service():
+    from outlook_web.services import external_api as external_api_service
+
+    return external_api_service
+
+
+def resolve_mailbox(email_addr: str) -> dict[str, Any]:
+    external_api_service = _external_api_service()
+    normalized_email = str(email_addr or "").strip()
+    if not normalized_email or "@" not in normalized_email:
+        raise external_api_service.InvalidParamError("email 参数无效")
+
+    # BUG-04: accounts 与 temp_emails 同邮箱命中时，必须显式冲突（避免安全边界被绕开）
+    account = accounts_repo.get_account_by_email(normalized_email)
+    temp_mailbox = temp_emails_repo.get_temp_email_by_address(
+        normalized_email, view="descriptor"
+    )
+    if account and temp_mailbox:
+        raise external_api_service.MailboxConflictError(
+            "邮箱冲突：accounts 与 temp_emails 同时存在",
+            data={
+                "email": normalized_email,
+                "account_id": account.get("id"),
+                "account_type": account.get("account_type"),
+                "account_provider": account.get("provider"),
+                "temp_email_id": temp_mailbox.get("id"),
+                "temp_mailbox_type": temp_mailbox.get("mailbox_type"),
+                "temp_status": temp_mailbox.get("status"),
+            },
+        )
+    if account:
+        return {
+            "kind": "account",
+            "email": normalized_email,
+            "source": str(
+                account.get("provider") or account.get("account_type") or "outlook"
+            ),
+            "provider_name": "imap_generic"
+            if str(account.get("account_type") or "").strip().lower() == "imap"
+            else "outlook_graph",
+            "status": str(account.get("status") or "active"),
+            "read_capability": "imap"
+            if str(account.get("account_type") or "").strip().lower() == "imap"
+            else "graph",
+            "meta": {"account": account},
+        }
+    if temp_mailbox:
+        return temp_mailbox
+
+    raise external_api_service.AccountNotFoundError(
+        "账号不存在", data={"email": normalized_email}
+    )
+
+
+def ensure_mailbox_can_read(
+    mailbox: dict[str, Any],
+    *,
+    consumer: dict[str, Any] | None = None,
+    allow_finished: bool = False,
+) -> dict[str, Any]:
+    external_api_service = _external_api_service()
+    consumer = consumer or get_external_api_consumer() or {}
+    kind = str(mailbox.get("kind") or "")
+
+    if kind == "account":
+        allowed_emails = [
+            str(item or "").strip().lower()
+            for item in (consumer.get("allowed_emails") or [])
+        ]
+        target_email = str(mailbox.get("email") or "").strip().lower()
+        if allowed_emails and target_email not in allowed_emails:
+            raise external_api_service.EmailScopeForbiddenError(
+                "当前 API Key 无权访问该邮箱",
+                data={
+                    "email": mailbox.get("email"),
+                    "consumer_id": consumer.get("id"),
+                    "consumer_name": consumer.get("name"),
+                },
+            )
+        return external_api_service.ensure_account_can_read(
+            (mailbox.get("meta") or {}).get("account") or {}
+        )
+
+    if kind != "temp":
+        raise external_api_service.AccountNotFoundError(
+            "账号不存在", data={"email": mailbox.get("email")}
+        )
+
+    temp_mailbox = (
+        mailbox
+        if mailbox.get("kind") == "temp"
+        else (mailbox.get("meta") or {}).get("temp_mailbox") or {}
+    )
+    status = str(temp_mailbox.get("status") or "active").strip().lower()
+    if status == "finished" and not allow_finished:
+        raise external_api_service.TaskFinishedError(
+            "任务邮箱已结束，禁止继续读取",
+            data={
+                "email": mailbox.get("email"),
+                "task_token": temp_mailbox.get("task_token"),
+            },
+        )
+    if status not in {"active", "finished"}:
+        raise external_api_service.AccountAccessForbiddenError(
+            "当前邮箱不可读取",
+            data={"email": mailbox.get("email"), "status": status},
+        )
+
+    mailbox_type = str(temp_mailbox.get("mailbox_type") or "user").strip().lower()
+    if mailbox_type == "task":
+        expected_consumer_key = str(temp_mailbox.get("consumer_key") or "").strip()
+        actual_consumer_key = str(consumer.get("consumer_key") or "").strip()
+        if expected_consumer_key and actual_consumer_key != expected_consumer_key:
+            raise external_api_service.EmailScopeForbiddenError(
+                "当前 API Key 无权访问该邮箱",
+                data={
+                    "email": mailbox.get("email"),
+                    "consumer_id": consumer.get("id"),
+                    "consumer_name": consumer.get("name"),
+                },
+            )
+
+    return temp_mailbox
+
+
+def ensure_mailbox_can_mutate(
+    mailbox: dict[str, Any],
+    *,
+    consumer: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    return ensure_mailbox_can_read(mailbox, consumer=consumer, allow_finished=False)

@@ -7,7 +7,7 @@
     <title>Outlook 邮件管理</title>
     <link rel="icon" type="image/png" href="/img/ico.png">
     <script src="https://cdn.jsdelivr.net/npm/dompurify@3.0.8/dist/purify.min.js"></script>
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}?v={{ APP_VERSION }}">
 </head>
 
 <body>
@@ -177,7 +177,6 @@
                                 <span id="currentGroupName">选择分组</span>
                             </span>
                             <div style="display:flex;gap:4px;align-items:center;">
-                                <button id="registerOutlookBtn" class="btn btn-sm" onclick="showGetRefreshTokenModal()" title="通过 OAuth 获取 Token 注册 Outlook 账号" style="display:none;background-color:#0078d4;color:#fff;font-size:0.75rem;padding:3px 8px;border:none;border-radius:4px;cursor:pointer;">🔑 注册</button>
                                 <button class="btn-icon" onclick="showTagManagementModal()" title="管理标签">🏷️</button>
                                 <button class="btn-icon" onclick="showAddAccountModal()" title="导入账号">+</button>
                             </div>
@@ -325,6 +324,18 @@
                             <span class="column-title">⚡ 临时邮箱</span>
                             <button class="btn btn-sm btn-primary" onclick="generateTempEmail()">+ 创建</button>
                         </div>
+                        <div style="padding:12px;border-bottom:1px solid var(--border-light);display:flex;flex-direction:column;gap:8px;">
+                            <select class="form-input" id="tempEmailProviderSelect" onchange="onTempEmailProviderChange(this.value)" title="选择创建邮箱的 Provider">
+                                <option value="legacy_bridge">🔧 GPTMail (Legacy Bridge)</option>
+                                <option value="cloudflare_temp_mail">☁ Cloudflare Temp Mail</option>
+                            </select>
+                            <input type="text" class="form-input" id="tempEmailPrefixInput" placeholder="前缀（可选）" maxlength="64">
+                            <select class="form-input" id="tempEmailDomainSelect" disabled>
+                                <option value="">自动分配域名</option>
+                            </select>
+                            <div id="tempEmailOptionsHint" class="form-hint" style="margin:0;">支持自定义前缀和多域名创建。</div>
+                            <div id="tempEmailOptionsStatus" class="form-error" style="display:none;margin:0;"></div>
+                        </div>
                         <div class="column-body" id="tempEmailContainer">
                             <div class="empty-state">
                                 <span class="empty-icon">📭</span>
@@ -345,6 +356,28 @@
                             <div class="empty-state">
                                 <span class="empty-icon">📬</span>
                                 <p>选择一个临时邮箱查看邮件</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="workspace-panel emails-column" id="tempEmailDetailSection" style="border-left:1px solid var(--border);">
+                        <div class="column-header">
+                            <span class="column-title">邮件详情</span>
+                        </div>
+                        <div class="email-detail-toolbar" id="tempEmailDetailToolbar" style="display:none;">
+                            <button class="btn btn-sm btn-ghost" onclick="showEmailList()">← 返回</button>
+                            <button class="btn btn-sm btn-ghost" onclick="openFullscreenEmail()">🔍 全屏查看</button>
+                            <button class="btn btn-sm btn-accent" onclick="extractVerificationFromDetail(this)" title="从邮件正文提取验证码/链接" style="font-size:0.72rem;padding:2px 8px;">🔑 验证码</button>
+                            <label style="display:flex;align-items:center;gap:4px;font-size:0.78rem;margin-left:8px;cursor:pointer;">
+                                <input type="checkbox" id="tempEmailTrustCheckbox" onchange="toggleTrustMode(this)">
+                                <span style="user-select:none;">信任此邮件</span>
+                            </label>
+                            <div style="flex:1;"></div>
+                            <button class="btn btn-sm btn-danger" onclick="confirmDeleteCurrentEmail()">🗑️ 删除</button>
+                        </div>
+                        <div class="email-detail-container" id="tempEmailDetail">
+                            <div class="empty-state">
+                                <span class="empty-icon">📄</span>
+                                <p>选择一封邮件查看详情</p>
                             </div>
                         </div>
                     </div>
@@ -376,11 +409,62 @@
                             <input type="password" class="form-input" id="settingsPassword" placeholder="输入新密码（留空则不修改）">
                             <div class="form-hint">用于登录系统的密码</div>
                         </div>
-                         <div class="form-group">
-                             <label class="form-label">GPTMail API Key</label>
-                             <input type="text" class="form-input" id="settingsApiKey" placeholder="输入 GPTMail API Key">
-                             <div class="form-hint">用于临时邮箱功能，可从 <a href="https://mail.chatgpt.org.uk/api" target="_blank" style="color: var(--clr-primary);">gptmail.io</a> 获取</div>
-                         </div>
+                        <div style="border-top: 1px solid var(--border-light); margin: 1.5rem 0; padding-top: 1.5rem;">
+                            <h4 style="font-size: 0.95rem; font-weight: 600; margin-bottom: 1rem; color: var(--text);">⚡ 临时邮箱配置</h4>
+                            <div class="form-group">
+                                <label class="form-label">全局临时邮箱 Provider</label>
+                                <select class="form-input" id="settingsTempMailProvider">
+                                    <option value="legacy_bridge">🔧 GPTMail (Legacy Bridge)</option>
+                                    <option value="cloudflare_temp_mail">☁ Cloudflare Temp Mail</option>
+                                </select>
+                                <div class="form-hint">决定 external API 和其他未明确指定 provider 的操作所使用的来源。生成邮箱时可在前端独立选择。</div>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">临时邮箱 API Base URL</label>
+                                <input type="text" class="form-input" id="settingsTempMailApiBaseUrl" placeholder="https://mail.example.com">
+                                <div class="form-hint">上游临时邮箱服务地址，留空则使用默认配置。</div>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">临时邮箱 API Key</label>
+                                <input type="text" class="form-input" id="settingsApiKey" placeholder="输入临时邮箱 API Key">
+                                <div class="form-hint">用于临时邮箱能力。旧版临时邮箱 API Key 字段仅保留兼容读取与迁移，不再作为正式配置字段。</div>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">可用域名（JSON）</label>
+                                <textarea class="form-input" id="settingsTempMailDomains" rows="4" placeholder='[
+  {"name": "mail.example.com", "enabled": true},
+  {"name": "temp.example.net", "enabled": true}
+]' style="font-family: monospace; font-size: 0.84rem;"></textarea>
+                                <div class="form-hint">支持字符串数组或 `{name, enabled}` 对象数组。</div>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">默认域名</label>
+                                <input type="text" class="form-input" id="settingsTempMailDefaultDomain" placeholder="mail.example.com">
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">前缀规则（JSON）</label>
+                                <textarea class="form-input" id="settingsTempMailPrefixRules" rows="4" placeholder='{
+  "min_length": 1,
+  "max_length": 32,
+  "pattern": "^[a-z0-9][a-z0-9._-]*$"
+}' style="font-family: monospace; font-size: 0.84rem;"></textarea>
+                            </div>
+                        </div>
+                        <!-- CF Worker 独立配置区 -->
+                        <div style="border-top: 1px solid var(--border-light); margin: 1.5rem 0; padding-top: 1.5rem;">
+                            <h4 style="font-size: 0.95rem; font-weight: 600; margin-bottom: 0.5rem; color: var(--text);">☁ Cloudflare Temp Email Worker 配置</h4>
+                            <p style="font-size: 0.82rem; color: var(--text-muted); margin-bottom: 1rem;">与 GPTMail 完全独立的配置。部署 dreamhunter2333/cloudflare_temp_email 后填写。</p>
+                            <div class="form-group">
+                                <label class="form-label">CF Worker 部署地址</label>
+                                <input type="text" class="form-input" id="settingsCfWorkerBaseUrl" placeholder="https://mail.yourname.workers.dev">
+                                <div class="form-hint">Cloudflare Worker 的部署 URL，不含尾部斜杠。</div>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">CF Worker Admin 密码</label>
+                                <input type="password" class="form-input" id="settingsCfWorkerAdminKey" placeholder="CF Worker 的 ADMIN_PASSWORDS 值" autocomplete="off">
+                                <div class="form-hint">对应 CF Worker 环境变量 ADMIN_PASSWORDS 中的密码值。</div>
+                            </div>
+                        </div>
                         <div class="form-group">
                             <label class="form-label">对外开放 API Key</label>
                             <input type="password" class="form-input" id="settingsExternalApiKey" placeholder="用于 /api/external/* 的 X-API-Key" autocomplete="off">
@@ -554,10 +638,10 @@
                             <div class="form-group">
                                 <label class="form-label">轮询间隔 <span style="font-size: 0.75rem; color: var(--text-muted); font-weight: 400;">（检查新邮件的时间间隔）</span></label>
                                 <div style="display: flex; align-items: center; gap: 8px;">
-                                    <input type="number" class="form-input" id="pollingInterval" min="5" max="300" value="10" placeholder="10" style="max-width: 120px;">
+                                    <input type="number" class="form-input" id="pollingInterval" min="3" max="300" value="10" placeholder="10" style="max-width: 120px;">
                                     <span style="font-size: 0.88rem; color: var(--text-muted); font-weight: 500;">秒</span>
                                 </div>
-                                <div class="form-hint">范围：5-300 秒，建议设置为 10-30 秒</div>
+                                <div class="form-hint">范围：3-300 秒，建议设置为 5-30 秒</div>
                             </div>
                             <div class="form-group">
                                 <label class="form-label">轮询次数 <span style="font-size: 0.75rem; color: var(--text-muted); font-weight: 400;">（最多轮询多少次后停止）</span></label>
@@ -569,6 +653,7 @@
                             </div>
                         </div>
 
+                        <!-- [Phase 3] 简洁模式独立面板已合并到上方标准轮询面板 -->
                         <!-- 邮件通知设置 -->
                         <div style="border-top: 1px solid var(--border-light); margin: 1.5rem 0; padding-top: 1.5rem;">
                             <h4 style="font-size: 0.95rem; font-weight: 600; margin-bottom: 1rem; color: var(--text);">✉️ Email 通知</h4>

@@ -1,11 +1,24 @@
 from __future__ import annotations
 
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 import requests
 
 from outlook_web import config
-from outlook_web.repositories.settings import get_gptmail_api_key
+from outlook_web.repositories.settings import (
+    get_temp_mail_api_base_url,
+    get_temp_mail_api_key as _get_temp_mail_api_key,
+)
+
+
+def get_temp_mail_api_key() -> str:
+    """正式临时邮箱 API Key getter，供 bridge 统一调用。"""
+    return _get_temp_mail_api_key()
+
+
+def get_gptmail_api_key() -> str:
+    """legacy alias，仅供兼容 bridge 与旧测试 patch 使用。"""
+    return get_temp_mail_api_key()
 
 
 def gptmail_request(
@@ -15,23 +28,27 @@ def gptmail_request(
     json_data: dict = None,
 ) -> Optional[Dict]:
     """
-    发送 GPTMail API 请求
+    发送 legacy 临时邮箱 bridge API 请求
 
     返回格式：
     - 成功：{"success": True, "data": {...}}
     - 失败：{"success": False, "error": "错误信息", "error_type": "错误类型", "details": "详细信息"}
     """
     try:
-        url = f"{config.get_gptmail_base_url()}{endpoint}"
+        try:
+            base_url = get_temp_mail_api_base_url() or config.get_temp_mail_base_url()
+        except Exception:
+            base_url = config.get_temp_mail_base_url()
+        url = f"{base_url}{endpoint}"
         api_key = get_gptmail_api_key()
 
         # 检查 API Key 是否配置
         if not api_key:
             return {
                 "success": False,
-                "error": "GPTMail API Key 未配置",
+                "error": "临时邮箱 API Key 未配置",
                 "error_type": "CONFIG_ERROR",
-                "details": "请在系统设置中配置 GPTMail API Key",
+                "details": "请在系统设置中配置临时邮箱 API Key",
             }
 
         headers = {
@@ -81,7 +98,7 @@ def gptmail_request(
         elif response.status_code >= 500:
             return {
                 "success": False,
-                "error": "GPTMail 服务暂时不可用",
+                "error": "临时邮箱服务暂时不可用",
                 "error_type": "SERVER_ERROR",
                 "details": f"HTTP {response.status_code}: 服务器错误，请稍后重试",
             }
@@ -103,7 +120,7 @@ def gptmail_request(
     except requests.exceptions.ConnectionError as e:
         return {
             "success": False,
-            "error": "无法连接到 GPTMail 服务",
+            "error": "无法连接到临时邮箱服务",
             "error_type": "CONNECTION_ERROR",
             "details": f"网络连接失败: {str(e)[:200]}",
         }
@@ -143,7 +160,7 @@ def generate_temp_email(prefix: str = None, domain: str = None) -> Tuple[Optiona
         result = gptmail_request("GET", "/api/generate-email")
 
     if not result:
-        return None, "GPTMail API 请求失败"
+        return None, "临时邮箱 API 请求失败"
 
     if result.get("success"):
         email = result.get("data", {}).get("email")
@@ -166,29 +183,111 @@ def generate_temp_email(prefix: str = None, domain: str = None) -> Tuple[Optiona
         return None, error_message
 
 
-def get_temp_emails_from_api(email_addr: str) -> Optional[List[Dict]]:
-    """从 GPTMail API 获取邮件列表"""
+def _normalize_bridge_failure_result(result: Optional[Dict], *, default_error: str) -> Dict[str, Any]:
+    payload = dict(result or {})
+    payload["success"] = False
+    payload["error"] = str(payload.get("error") or default_error)
+    payload["error_type"] = str(payload.get("error_type") or "UNKNOWN_ERROR")
+    payload["details"] = str(payload.get("details") or "")
+    return payload
+
+
+def _fetch_temp_emails_bridge_result(email_addr: str) -> Dict[str, Any]:
     result = gptmail_request("GET", "/api/emails", params={"email": email_addr})
     if result and result.get("success"):
-        return result.get("data", {}).get("emails", [])
+        emails = (result.get("data") or {}).get("emails", [])
+        return {"success": True, "emails": emails}
+    return _normalize_bridge_failure_result(result, default_error="临时邮箱邮件列表读取失败")
+
+
+def _fetch_temp_email_detail_bridge_result(email_addr: str, message_id: str) -> Dict[str, Any]:
+    params = {"email": email_addr} if email_addr else None
+    result = gptmail_request("GET", f"/api/email/{message_id}", params=params)
+    if result and result.get("success"):
+        return {"success": True, "data": result.get("data")}
+    return _normalize_bridge_failure_result(result, default_error="临时邮箱邮件详情读取失败")
+
+
+def get_temp_emails_from_api(email_addr: str) -> Optional[List[Dict]]:
+    """从 legacy 临时邮箱 bridge 获取邮件列表"""
+    result = _fetch_temp_emails_bridge_result(email_addr)
+    if result.get("success"):
+        return result.get("emails", [])
     return None
 
 
-def get_temp_email_detail_from_api(message_id: str) -> Optional[Dict]:
-    """从 GPTMail API 获取邮件详情"""
-    result = gptmail_request("GET", f"/api/email/{message_id}")
-    if result and result.get("success"):
+def get_temp_email_detail_from_api(email_addr: str, message_id: str) -> Optional[Dict]:
+    """
+    从 legacy 临时邮箱 bridge 获取邮件详情。
+
+    当前 legacy bridge 仍主要依赖全局 message_id；这里保留 mailbox-scoped 签名，
+    让上层 service/provider 始终显式携带 email_addr，避免把“全局唯一”假设继续向
+    本地缓存层扩散。若上游支持邮箱作用域过滤，会优先附带 email 参数。
+    """
+    result = _fetch_temp_email_detail_bridge_result(email_addr, message_id)
+    if result.get("success"):
         return result.get("data")
     return None
 
 
-def delete_temp_email_from_api(message_id: str) -> bool:
-    """从 GPTMail API 删除邮件"""
-    result = gptmail_request("DELETE", f"/api/email/{message_id}")
+_ORIGINAL_GET_TEMP_EMAILS_FROM_API = get_temp_emails_from_api
+_ORIGINAL_GET_TEMP_EMAIL_DETAIL_FROM_API = get_temp_email_detail_from_api
+
+
+def list_temp_emails_result_from_api(email_addr: str) -> Dict[str, Any]:
+    """
+    提供给 provider/service 的结构化结果，显式区分：
+    - success=True + emails=[]
+    - success=False 上游读取失败
+
+    若测试或兼容层 patch 了 legacy helper，则优先复用该 patch 行为，避免把既有
+    provider/controller regression 全部强制改写。
+    """
+    if get_temp_emails_from_api is not _ORIGINAL_GET_TEMP_EMAILS_FROM_API:
+        legacy_result = get_temp_emails_from_api(email_addr)
+        if legacy_result is not None:
+            return {"success": True, "emails": legacy_result}
+        return {
+            "success": False,
+            "error": "临时邮箱邮件列表读取失败",
+            "error_type": "LEGACY_BRIDGE_ERROR",
+            "details": "legacy helper returned None",
+        }
+    return _fetch_temp_emails_bridge_result(email_addr)
+
+
+def get_temp_email_detail_result_from_api(email_addr: str, message_id: str) -> Dict[str, Any]:
+    """
+    提供给 provider/service 的结构化结果，显式区分：
+    - success=True + data=None: 真正未找到该邮件
+    - success=False: 上游读取失败
+    """
+    if get_temp_email_detail_from_api is not _ORIGINAL_GET_TEMP_EMAIL_DETAIL_FROM_API:
+        legacy_result = get_temp_email_detail_from_api(email_addr, message_id)
+        if legacy_result is not None:
+            return {"success": True, "data": legacy_result}
+        return {
+            "success": False,
+            "error": "临时邮箱邮件详情读取失败",
+            "error_type": "LEGACY_BRIDGE_ERROR",
+            "details": "legacy helper returned None",
+        }
+    return _fetch_temp_email_detail_bridge_result(email_addr, message_id)
+
+
+def delete_temp_email_from_api(email_addr: str, message_id: str) -> bool:
+    """
+    从 legacy 临时邮箱 bridge 删除邮件。
+
+    legacy upstream 可能仍只按全局 message_id 删除；email_addr 作为显式上下文保留，
+    用于尽量贴近 mailbox-scoped 契约，并为未来上游补齐邮箱作用域预留参数。
+    """
+    params = {"email": email_addr} if email_addr else None
+    result = gptmail_request("DELETE", f"/api/email/{message_id}", params=params)
     return bool(result and result.get("success", False))
 
 
 def clear_temp_emails_from_api(email_addr: str) -> bool:
-    """清空 GPTMail 邮箱的所有邮件"""
+    """清空 legacy 临时邮箱 bridge 邮箱的所有邮件"""
     result = gptmail_request("DELETE", "/api/emails/clear", params={"email": email_addr})
     return bool(result and result.get("success", False))

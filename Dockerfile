@@ -12,10 +12,10 @@ ENV PYTHONUNBUFFERED=1 \
 # 复制依赖文件
 COPY requirements.txt .
 
-# 安装依赖（包括生产服务器）
-RUN pip install --upgrade pip && \
-    pip install -r requirements.txt && \
-    pip install gunicorn
+# 安装依赖（pip 走国内镜像加速）
+RUN pip install --upgrade pip -i https://pypi.tuna.tsinghua.edu.cn/simple && \
+    pip install -r requirements.txt -i https://pypi.tuna.tsinghua.edu.cn/simple && \
+    pip install gunicorn -i https://pypi.tuna.tsinghua.edu.cn/simple
 
 # 复制应用代码
 COPY . .

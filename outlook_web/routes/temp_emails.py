@@ -13,9 +13,19 @@ def create_blueprint(csrf_exempt=None) -> Blueprint:
     handlers = [
         ("/api/temp-emails", temp_emails_controller.api_get_temp_emails, ["GET"]),
         (
+            "/api/temp-emails/options",
+            temp_emails_controller.api_get_temp_email_options,
+            ["GET"],
+        ),
+        (
             "/api/temp-emails/generate",
             temp_emails_controller.api_generate_temp_email,
             ["POST"],
+        ),
+        (
+            "/api/temp-emails/<path:email_addr>/extract-verification",
+            temp_emails_controller.api_extract_temp_email_verification,
+            ["GET"],
         ),
         (
             "/api/temp-emails/<path:email_addr>",

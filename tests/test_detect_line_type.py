@@ -130,12 +130,12 @@ class TestDetectLineType(unittest.TestCase):
         r = self._detect("user@corp.com----pwd")
         self.assertEqual(r["type"], "error")
 
-    # --- 1 段：GPTMail ---
-    def test_gptmail_1_part(self):
-        r = self._detect("temp@gptmail.com")
-        self.assertEqual(r["type"], "gptmail")
-        self.assertEqual(r["provider"], "gptmail")
-        self.assertEqual(r["fields"]["email"], "temp@gptmail.com")
+    # --- 1 段：临时邮箱 ---
+    def test_temp_mail_1_part(self):
+        r = self._detect("temp@temp.example")
+        self.assertEqual(r["type"], "temp_mail")
+        self.assertEqual(r["provider"], "temp_mail")
+        self.assertEqual(r["fields"]["email"], "temp@temp.example")
 
     def test_1_part_invalid_email(self):
         r = self._detect("not-an-email")

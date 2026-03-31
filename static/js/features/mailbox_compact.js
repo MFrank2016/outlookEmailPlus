@@ -1,4 +1,4 @@
-        function getCompactVisibleAccounts() {
+﻿        function getCompactVisibleAccounts() {
             return Array.isArray(accountsCache[currentGroupId]) ? accountsCache[currentGroupId] : [];
         }
 
@@ -54,8 +54,25 @@
         }
 
         function switchMailboxViewMode(mode) {
+            var prevMode = mailboxViewMode;
             mailboxViewMode = mode === 'compact' ? 'compact' : 'standard';
             localStorage.setItem('ol_mailbox_view_mode', mailboxViewMode);
+
+            // 视图切换时不停止轮询——统一引擎持续运行，UI 回调根据 mailboxViewMode 分发。
+            // 只需在切换后清理旧模式 UI 残留，然后重新应用新模式 UI。
+            if (prevMode === 'compact' && mailboxViewMode !== 'compact') {
+                // 从简洁模式切走：清理简洁模式的轮询 UI（绿点、按钮文字），但不停止轮询
+                if (typeof pollMap !== 'undefined') {
+                    pollMap.forEach(function(state, email) {
+                        updateCompactPollUI(email, 'stopped', null);
+                    });
+                }
+            } else if (prevMode !== 'compact' && mailboxViewMode === 'compact') {
+                // 从标准模式切走：清理标准模式的轮询 UI
+                if (typeof hideStandardPollDot === 'function') {
+                    hideStandardPollDot(); // 无参数 = 清除所有
+                }
+            }
 
             const standardLayout = document.getElementById('mailboxStandardLayout');
             const compactLayout = document.getElementById('mailboxCompactLayout');
@@ -77,6 +94,12 @@
             renderCompactAccountList(getCompactVisibleAccounts());
             updateBatchActionBar();
             updateSelectAllCheckbox();
+
+            // 切换完成后重新应用当前模式的轮询 UI（renderAccountList/renderCompactAccountList
+            // 内部已调用 reapplyAllPollUI/reapplyAllCompactPollUI，但模式切换可能需要额外刷新）
+            if (typeof reapplyAllPollUI === 'function') {
+                reapplyAllPollUI();
+            }
         }
 
         function renderCompactGroupStrip(groupItems, activeGroupId) {
@@ -237,7 +260,7 @@
                 ].filter(Boolean).join(' · ');
 
                 return `
-                    <div class="mail-row ${isChecked ? 'is-selected' : ''}">
+                    <div class="mail-row ${isChecked ? 'is-selected' : ''}" data-email="${escapeHtml(account.email || '')}">
                         <div class="select-cell" data-label="${escapeHtml(translateCompactText('选择'))}">
                             <input
                                 type="checkbox"
@@ -296,9 +319,200 @@
 
             updateSelectAllCheckbox();
             updateBatchActionBar();
+            // 重新应用所有轮询 UI 状态（在列表刷新后恢复激活态圆点和按钮样式）
+            if (typeof reapplyAllCompactPollUI === 'function') {
+                reapplyAllCompactPollUI();
+            }
         }
 
         window.addEventListener('ui-language-changed', () => {
             renderCompactGroupStrip(groups, currentGroupId);
             renderCompactAccountList(getCompactVisibleAccounts());
+        });
+
+        // ==================== 简洁模式轮询 UI 适配层 ====================
+        //
+        // 核心轮询引擎已迁移至 poll-engine.js。
+        // 本文件保留简洁模式特有的 DOM 查找、UI 更新和事件监听。
+
+        // ── 向后兼容别名（测试和 main.js 可能引用旧名称） ──
+        var COMPACT_POLL_TOAST_DURATION   = typeof POLL_TOAST_DURATION !== 'undefined' ? POLL_TOAST_DURATION : 5000;
+        var COMPACT_POLL_INITIAL_DELAY_MS = typeof POLL_INITIAL_DELAY_MS !== 'undefined' ? POLL_INITIAL_DELAY_MS : 150;
+        var compactPollMap                = typeof pollMap !== 'undefined' ? pollMap : new Map();
+        var compactPollCountdownTimer     = null; // 仅供测试 setup.js 重置用
+
+        // ── 简洁模式 DOM 操作 ──
+
+        function findCompactAccountRow(email) {
+            if (!email) return null;
+            try {
+                var esc = String(email).replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+                var el = document.querySelector('.mail-row[data-email="' + esc + '"]');
+                if (el) return el;
+            } catch (e) {}
+            var rows = document.querySelectorAll('.mail-row');
+            for (var i = 0; i < rows.length; i++) {
+                if (rows[i].getAttribute && rows[i].getAttribute('data-email') === email) return rows[i];
+            }
+            return null;
+        }
+
+        function updateCompactPollUI(email, status, remainingSeconds) {
+            var row = findCompactAccountRow(email);
+            if (!row) return;
+            var pull = row.querySelector('.pull-button');
+            var card = row.querySelector('.mail-card');
+
+            var oldDot = card ? card.querySelector('.compact-poll-dot') : null;
+            if (oldDot) oldDot.remove();
+
+            if (status === 'polling') {
+                if (card) {
+                    var dot = document.createElement('span');
+                    dot.className = 'compact-poll-dot';
+                    card.appendChild(dot);
+                }
+                if (pull) {
+                    pull.classList.add('compact-poll-active');
+                    pull.setAttribute('data-poll-email', email);
+                    var tFn = typeof translateCompactText === 'function' ? translateCompactText : function(k) { return k; };
+                    pull.textContent = tFn('停止监听') + ' ' + (Number(remainingSeconds) || 0) + 's';
+                }
+            } else if (status === 'stopped') {
+                if (pull) {
+                    pull.classList.remove('compact-poll-active');
+                    pull.removeAttribute('data-poll-email');
+                    var tFn2 = typeof translateCompactText === 'function' ? translateCompactText : function(k) { return k; };
+                    pull.textContent = tFn2('拉取');
+                }
+            }
+        }
+
+        function updateSingleRowFromCache(email, summary) {
+            if (!email || !summary) return;
+            var row = findCompactAccountRow(email);
+            if (!row) return;
+
+            var codeBtn = row.querySelector('.code-button');
+            if (codeBtn && summary.latest_verification_code !== undefined) {
+                var code = summary.latest_verification_code || '';
+                var tFn = typeof translateCompactText === 'function' ? translateCompactText : function(k) { return k; };
+                codeBtn.textContent = code || tFn('暂无');
+                if (code) codeBtn.classList.remove('empty'); else codeBtn.classList.add('empty');
+            }
+
+            var snippetSubject = row.querySelector('.snippet-subject');
+            var snippetMeta = row.querySelector('.snippet-meta');
+            if (snippetSubject && summary.latest_email_subject !== undefined) {
+                snippetSubject.textContent = summary.latest_email_subject || '';
+                snippetSubject.title = summary.latest_email_subject || '';
+            }
+            if (snippetMeta) {
+                var meta = [summary.latest_email_from || '', summary.latest_email_folder || '', summary.latest_email_received_at || ''].filter(Boolean).join(' · ');
+                var tFn2 = typeof translateCompactText === 'function' ? translateCompactText : function(k) { return k; };
+                snippetMeta.textContent = meta || tFn2('暂无邮件摘要');
+                snippetMeta.title = meta;
+            }
+        }
+
+        function reapplyAllCompactPollUI() {
+            if (typeof pollMap === 'undefined') return;
+            pollMap.forEach(function(state, email) {
+                if (!state) return;
+                var remaining = state.maxCount > 0 ? Math.max(0, state.maxCount - state.pollCount) : 0;
+                updateCompactPollUI(email, 'polling', remaining);
+            });
+        }
+
+        // ── 注册统一 UI 回调到统一引擎（支持标准模式和简洁模式） ──
+
+        if (typeof registerPollUICallbacks === 'function') {
+            registerPollUICallbacks({
+                onPollStart: function(email, maxCount, opts) {
+                    var view = typeof mailboxViewMode !== 'undefined' ? mailboxViewMode : '';
+                    if (view === 'compact') {
+                        updateCompactPollUI(email, 'polling', maxCount);
+                    } else {
+                        if (typeof showStandardPollDot === 'function') showStandardPollDot(email);
+                        // 标准模式：仅首次启动且非静默时 Toast 提示
+                        // reapply=true 表示 UI 刷新重绘，silent=true 表示批量启动（不弹单条 Toast）
+                        if (!opts || (!opts.reapply && !opts.silent)) {
+                            var countText = maxCount > 0 ? ('，最多 ' + maxCount + ' 次') : '';
+                            if (typeof showToast === 'function') showToast(translateCompactText('开始监听') + ' ' + email + ' ' + translateCompactText('的新邮件') + countText, 'info');
+                        }
+                    }
+                },
+                onPollStop: function(email) {
+                    var view = typeof mailboxViewMode !== 'undefined' ? mailboxViewMode : '';
+                    if (view === 'compact') {
+                        updateCompactPollUI(email, 'stopped', null);
+                    } else {
+                        if (typeof hideStandardPollDot === 'function') hideStandardPollDot(email);
+                    }
+                },
+                onPollTick: function(email, remainingCount) {
+                    var view = typeof mailboxViewMode !== 'undefined' ? mailboxViewMode : '';
+                    if (view === 'compact') {
+                        updateCompactPollUI(email, 'polling', remainingCount);
+                    }
+                    // 标准模式不需要倒计时文字
+                },
+                onNewEmail: function(email, summary) {
+                    var view = typeof mailboxViewMode !== 'undefined' ? mailboxViewMode : '';
+                    if (view === 'compact') {
+                        updateSingleRowFromCache(email, summary);
+                    }
+                    // 标准模式：引擎已自动处理验证码提取+复制
+                },
+                onAccountCheck: function(email) {
+                    var accounts = typeof getCompactVisibleAccounts === 'function' ? getCompactVisibleAccounts() : [];
+                    if (!accounts.some(function(a) { return a.email === email; })) return false;
+                    var view = typeof mailboxViewMode !== 'undefined' ? mailboxViewMode : '';
+                    if (view === 'compact') {
+                        // DOM 检查（软检查：找不到只跳过，不停止）
+                        return !!findCompactAccountRow(email);
+                    }
+                    // 标准模式：账号存在于缓存即可，不需要 DOM 检查
+                    return true;
+                }
+            });
+        }
+
+        // ── 向后兼容函数别名（供 main.js 和旧代码调用） ──
+
+        function startCompactAutoPoll(email, opts) {
+            if (typeof startPoll === 'function') return startPoll(email, opts);
+        }
+
+        function stopCompactAutoPoll(email, toastMsg, toastType) {
+            if (typeof stopPoll === 'function') return stopPoll(email, toastMsg, toastType);
+        }
+
+        function stopAllCompactAutoPolls() {
+            if (typeof stopAllPolls === 'function') return stopAllPolls();
+        }
+
+        function applyCompactPollSettingsToRunningPolls(newSettings) {
+            if (typeof applyPollSettingsToRunning === 'function') return applyPollSettingsToRunning(newSettings);
+        }
+
+        function applyCompactPollSettings(settings) {
+            if (typeof applyPollSettings === 'function') return applyPollSettings(settings);
+        }
+
+        // ── 统一事件监听（标准模式和简洁模式共用） ──
+
+        window.addEventListener('email-copied', function(e) {
+            var email = e && e.detail && e.detail.email;
+            if (!email) return;
+            var enabled = typeof pollEnabled !== 'undefined' ? pollEnabled : false;
+            console.debug('[email-copied] email:', email, 'pollEnabled:', enabled, 'mailboxViewMode:', typeof mailboxViewMode !== 'undefined' ? mailboxViewMode : 'undefined');
+            if (!enabled) return;
+            // 不限制视图模式：标准模式和简洁模式均触发轮询
+            var isTemp = typeof isTempEmailGroup !== 'undefined' ? isTempEmailGroup : false;
+            if (isTemp) return;
+            var accounts = typeof getCompactVisibleAccounts === 'function' ? getCompactVisibleAccounts() : [];
+            var found = accounts.some(function(a) { return a.email === email; });
+            if (!found) return;
+            if (typeof startPoll === 'function') startPoll(email);
         });

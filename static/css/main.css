@@ -572,6 +572,53 @@ textarea.form-input {
 .accounts-column.is-compact .account-card:hover .account-select-checkbox,
 .accounts-column.is-compact .account-select-checkbox:checked { opacity: 1; }
 
+/* 账号列表分页控件 */
+.account-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  padding: 0.8rem 1rem 1rem;
+  border-top: 1px solid var(--border);
+  background: var(--bg-secondary);
+  position: sticky;
+  bottom: 0;
+  z-index: 2;
+}
+
+.account-pagination .page-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-card);
+  color: var(--text-primary);
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  flex-shrink: 0;
+}
+.account-pagination .page-btn:hover:not(:disabled) {
+  background: var(--clr-primary);
+  color: #fff;
+  border-color: var(--clr-primary);
+}
+.account-pagination .page-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+.account-pagination .page-info {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+  flex: 1;
+  text-align: center;
+  min-width: 0;
+}
+
 /* 批量操作栏 */
 .batch-action-bar {
   padding: 0.6rem 1rem; background: var(--bg-card); border-top: 1px solid var(--border);
@@ -1401,3 +1448,73 @@ tr:hover td { background: rgba(184,92,56,0.04); }
 
 /* ===== 兼容旧版 class 名（过渡用） ===== */
 .navbar { display: none; }
+
+/* ===== 简洁模式自动轮询 ===== */
+/* 脉冲状态圆点 */
+.compact-poll-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--clr-success, #52c41a);
+  margin-left: 5px;
+  vertical-align: middle;
+  animation: pulse-dot 1.2s ease-in-out infinite;
+}
+
+/* 标准模式轮询小绿点（嵌入邮箱地址旁） */
+/* 标准模式轮询绿点（嵌入状态行中） */
+.standard-poll-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--clr-success, #52c41a);
+  margin-right: 5px;
+  vertical-align: middle;
+  animation: pulse-dot 1.2s ease-in-out infinite;
+  flex-shrink: 0;
+}
+
+/* 标准模式轮询状态行 */
+.standard-poll-status {
+  display: flex;
+  align-items: center;
+  font-size: 0.72rem;
+  color: var(--clr-success, #52c41a);
+  font-weight: 500;
+  margin-top: 3px;
+  animation: fadeIn 0.3s ease-in;
+}
+
+/* 标准模式轮询激活态卡片 */
+.account-card.standard-poll-active {
+  border-left: 3px solid var(--clr-success, #52c41a) !important;
+  box-shadow: 0 0 8px rgba(82, 196, 26, 0.15);
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.5; transform: scale(0.75); }
+}
+
+/* 轮询激活态拉取按钮 */
+.pull-button.compact-poll-active {
+  background: linear-gradient(135deg, #52c41a, #73d13d) !important;
+  border-color: #52c41a !important;
+  color: #fff !important;
+  box-shadow: 0 0 8px rgba(82, 196, 26, 0.45);
+}
+
+/* 暗色主题适配 */
+[data-theme="dark"] .pull-button.compact-poll-active {
+  background: linear-gradient(135deg, #389e0d, #52c41a) !important;
+  border-color: #52c41a !important;
+  color: #fff !important;
+  box-shadow: 0 0 10px rgba(82, 196, 26, 0.55);
+}

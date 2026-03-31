@@ -34,8 +34,13 @@ data/
 # Codex / 本地过程留痕（不入库）
 .codex/
 
-# 本地文档（默认不推送）
-docs/
+# OpenCode / 本地AI工具（不入库）
+.opencode/
+opencode.json
+verification.md
+
+# 本地文档（docs/ 已纳入版本管理）
+# docs/
 
 # 内部文档（不开源）
 PRD/
@@ -74,3 +79,4 @@ CLAUDE.md
 安全漏洞.md
 get_oauth_token.py
 start_temp.bat
+.aider*

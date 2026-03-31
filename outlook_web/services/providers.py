@@ -101,6 +101,7 @@ PROVIDER_GROUP_NAME: Dict[str, str] = {
     "yahoo": "Yahoo",
     "aliyun": "阿里云邮箱",
     "custom": "自定义IMAP",
+    "temp_mail": "临时邮箱",
     "gptmail": "临时邮箱",
 }
 
