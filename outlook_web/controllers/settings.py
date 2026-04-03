@@ -1104,6 +1104,107 @@ def api_test_email() -> Any:
 
 
 @login_required
+def api_sync_cf_worker_domains() -> Any:
+    """
+    从 CF Worker 的 /open_api/settings 接口同步域名列表到本地配置。
+
+    成功后自动写入：
+    - temp_mail_domains：CF Worker 上配置的所有域名
+    - temp_mail_default_domain：CF Worker 的默认域名（defaultDomains 第一个）
+
+    返回：{"success": True, "domains": [...], "default_domain": "...", "message": "..."}
+    """
+    from outlook_web.services.temp_mail_provider_cf import CloudflareTempMailProvider
+    from outlook_web.services.temp_mail_provider_factory import (
+        TempMailProviderFactoryError,
+    )
+
+    cf_base_url = settings_repo.get_cf_worker_base_url()
+    if not cf_base_url:
+        return _json_error(
+            "CF_WORKER_NOT_CONFIGURED",
+            "请先配置 CF Worker 地址（cf_worker_base_url）",
+            status=400,
+        )
+
+    try:
+        provider = CloudflareTempMailProvider()
+        result = provider.get_cf_worker_domains()
+    except Exception as exc:
+        return _json_error(
+            "CF_WORKER_SYNC_FAILED",
+            f"CF Worker 域名同步失败: {exc}",
+            status=502,
+        )
+
+    if not result.get("success"):
+        return _json_error(
+            result.get("error_code") or "CF_WORKER_SYNC_FAILED",
+            result.get("error") or "CF Worker 域名同步失败",
+            status=502,
+        )
+
+    domains: list[str] = result.get("domains") or []
+    default_domain: str = result.get("default_domain") or ""
+
+    if not domains:
+        return _json_error(
+            "CF_WORKER_NO_DOMAINS",
+            "CF Worker 未返回任何域名，请检查 CF Worker 配置",
+            status=502,
+        )
+
+    # 构建 temp_mail_domains 格式（带 enabled/is_default 标记）
+    domains_payload = [
+        {
+            "name": d,
+            "enabled": True,
+        }
+        for d in domains
+    ]
+    db = get_db()
+    try:
+        db.execute("BEGIN")
+        settings_repo.set_setting(
+            "temp_mail_domains",
+            __import__("json").dumps(domains_payload, ensure_ascii=False),
+            commit=False,
+        )
+        if default_domain:
+            settings_repo.set_setting(
+                "temp_mail_default_domain", default_domain, commit=False
+            )
+        db.commit()
+    except Exception as exc:
+        try:
+            db.rollback()
+        except Exception:
+            pass
+        return _json_error(
+            "INTERNAL_ERROR",
+            f"域名同步写入失败: {exc}",
+            status=500,
+        )
+
+    log_audit(
+        "sync",
+        "settings",
+        None,
+        f"cf_worker_domains_synced domains={','.join(domains)} default={default_domain}",
+    )
+    return jsonify(
+        {
+            "success": True,
+            "domains": domains,
+            "default_domain": default_domain,
+            "title": result.get("title") or "",
+            "version": result.get("version") or "",
+            "message": f"已同步 {len(domains)} 个域名，默认域名：{default_domain or '（未指定）'}",
+        }
+    )
+
+
+@login_required
 def api_test_telegram() -> Any:
     """发送 Telegram 测试消息，验证 bot_token + chat_id 配置是否正确"""
     from outlook_web.services.telegram_push import _send_telegram_message

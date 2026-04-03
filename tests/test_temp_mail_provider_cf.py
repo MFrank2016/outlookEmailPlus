@@ -311,12 +311,14 @@ class CloudflareTempMailProviderTests(unittest.TestCase):
                 result = provider.create_mailbox()
 
         self.assertTrue(result["success"])
-        # CF Worker /admin/new_address 不接受 domain 字段；
-        # 验证 payload 中有 name 字段（非空随机前缀），且不包含 domain 字段
+        # CF Worker v1.5.0+ 支持 domain 字段；当有可用域名配置时，
+        # payload 中应包含 name（非空随机前缀）和 domain（来自配置的默认域名）。
         payload = post_mock.call_args[1]["json"]
         self.assertIn("name", payload)
         self.assertTrue(len(payload["name"]) > 0)
-        self.assertNotIn("domain", payload)
+        # 有 domain 配置时应传入 domain 字段
+        self.assertIn("domain", payload)
+        self.assertEqual(payload["domain"], "cf-mail.example.com")
 
     # ------------------------------------------------------------------
     # delete_mailbox

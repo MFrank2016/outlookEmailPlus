@@ -378,11 +378,6 @@ class CloudflareTempMailProvider(TempMailProviderBase):
                 "error_code": "TEMP_MAIL_PROVIDER_NOT_CONFIGURED",
             }
 
-        # 注意：部分 CF Worker 部署版本（如 zerodotsix.top）不支持显式 domain 字段，
-        # 传入 domain 字段会导致 400 "Required field is missing"。
-        # 解决方案：始终省略 domain 字段，让 CF Worker 使用其内置默认域名。
-        # 当配置的 target_domain 与 CF Worker 实际默认域名一致时，结果相同。
-
         # CF Worker 要求 name 不能为空字符串（空串会返回 400 "Required field is missing"）。
         # 当调用方未指定 prefix 时，在 Python 侧生成随机 8 字符前缀。
         effective_name = (prefix or "").strip()
@@ -390,10 +385,15 @@ class CloudflareTempMailProvider(TempMailProviderBase):
             alphabet = string.ascii_lowercase + string.digits
             effective_name = "".join(secrets.choice(alphabet) for _ in range(8))
 
+        # 验证：CF Worker v1.5.0+ 支持 domain 字段，可用于多域名创建。
+        # 若 target_domain 非空，则传入 domain 字段以支持指定域名创建；
+        # 若 target_domain 为空，则省略 domain 字段，让 CF Worker 使用其内置默认域名。
         payload: dict[str, Any] = {
             "name": effective_name,
-            "enablePrefix": False,  # BUG-CF-06：禁止 CF 自动加前缀
+            "enablePrefix": False,  # 禁止 CF 自动加前缀，避免邮箱名不符合预期
         }
+        if target_domain:
+            payload["domain"] = target_domain
 
         try:
             resp = requests.post(
@@ -692,3 +692,80 @@ class CloudflareTempMailProvider(TempMailProviderBase):
         except requests.RequestException as exc:
             logger.warning("[cf_provider] clear_messages failed err=%s", exc)
             return False
+
+    def get_cf_worker_domains(self) -> dict[str, Any]:
+        """
+        查询 CF Worker 的 GET /open_api/settings 接口，
+        获取 CF Worker 上配置的可用域名列表（无需鉴权，公开接口）。
+
+        返回格式：
+        - 成功：{"success": True, "domains": ["a.com", "b.com"], "default_domain": "a.com",
+                  "title": "...", "version": "..."}
+        - 失败：{"success": False, "error": "...", "error_code": "..."}
+
+        用途：管理员可通过此接口将 CF Worker 的实际域名配置同步到本地 settings 表，
+        避免手动维护 temp_mail_domains / temp_mail_default_domain。
+        """
+        base_url = self._base_url()
+        if not base_url:
+            return {
+                "success": False,
+                "error": "CF Worker base_url 未配置",
+                "error_code": "TEMP_MAIL_PROVIDER_NOT_CONFIGURED",
+            }
+
+        try:
+            resp = requests.get(
+                f"{base_url}/open_api/settings",
+                timeout=_CF_REQUEST_TIMEOUT,
+            )
+        except requests.Timeout:
+            return {
+                "success": False,
+                "error": "CF Worker 请求超时",
+                "error_code": "UPSTREAM_TIMEOUT",
+            }
+        except requests.RequestException as exc:
+            return {
+                "success": False,
+                "error": f"CF Worker 网络错误: {exc}",
+                "error_code": "UPSTREAM_SERVER_ERROR",
+            }
+
+        if not resp.ok:
+            return {
+                "success": False,
+                "error": f"CF Worker 查询域名失败 HTTP {resp.status_code}",
+                "error_code": _map_cf_http_error(resp.status_code, resp.text),
+            }
+
+        try:
+            data = resp.json()
+        except Exception:
+            return {
+                "success": False,
+                "error": "CF Worker 返回非 JSON 响应",
+                "error_code": "UPSTREAM_BAD_PAYLOAD",
+            }
+
+        # CF Worker open_api/settings 返回 domains 列表（v1.5.0+）
+        raw_domains: list[Any] = data.get("domains") or data.get("defaultDomains") or []
+        default_domains: list[Any] = data.get("defaultDomains") or []
+
+        # 过滤有效域名
+        domains = [str(d).strip() for d in raw_domains if str(d or "").strip()]
+        # 默认域名：优先取 defaultDomains 第一个
+        default_domain = ""
+        if default_domains:
+            default_domain = str(default_domains[0] or "").strip()
+        elif domains:
+            default_domain = domains[0]
+
+        return {
+            "success": True,
+            "domains": domains,
+            "default_domain": default_domain,
+            "title": str(data.get("title") or ""),
+            "version": str(data.get("version") or ""),
+            "raw": data,
+        }
