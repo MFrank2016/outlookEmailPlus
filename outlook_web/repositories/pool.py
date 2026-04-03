@@ -65,7 +65,9 @@ def claim_atomic(
             params.append(tag_name)
 
     if exclude_recent_minutes and exclude_recent_minutes > 0:
-        cutoff = (_utcnow() - timedelta(minutes=exclude_recent_minutes)).isoformat() + "Z"
+        cutoff = (
+            _utcnow() - timedelta(minutes=exclude_recent_minutes)
+        ).isoformat() + "Z"
         sql += " AND (a.last_claimed_at IS NULL OR a.last_claimed_at < ?)"
         params.append(cutoff)
 
@@ -97,7 +99,9 @@ def claim_atomic(
         return None
 
     now_str = _utcnow().isoformat() + "Z"
-    lease_expires_at_str = (_utcnow() + timedelta(seconds=lease_seconds)).isoformat() + "Z"
+    lease_expires_at_str = (
+        _utcnow() + timedelta(seconds=lease_seconds)
+    ).isoformat() + "Z"
     token = "clm_" + secrets.token_urlsafe(9)
 
     conn.execute(
@@ -364,86 +368,6 @@ def get_stats(conn: sqlite3.Connection) -> dict:
             pool_counts[key] = row["cnt"]
 
     return {"pool_counts": pool_counts}
-
-    sql = """
-        SELECT a.* FROM accounts a
-        WHERE a.pool_status = 'available'
-        AND a.status = 'active'
-    """
-    params: list = []
-
-    if provider:
-        sql += " AND a.provider = ?"
-        params.append(provider)
-
-    if group_id is not None:
-        sql += " AND a.group_id = ?"
-        params.append(group_id)
-
-    if tags:
-        for tag_name in tags:
-            sql += """
-                AND EXISTS (
-                    SELECT 1 FROM account_tags at2
-                    JOIN tags t2 ON at2.tag_id = t2.id
-                    WHERE at2.account_id = a.id AND t2.name = ?
-                )
-            """
-            params.append(tag_name)
-
-    if exclude_recent_minutes and exclude_recent_minutes > 0:
-        cutoff = (_utcnow() - timedelta(minutes=exclude_recent_minutes)).isoformat() + "Z"
-        sql += " AND (a.last_claimed_at IS NULL OR a.last_claimed_at < ?)"
-        params.append(cutoff)
-
-    sql += " ORDER BY RANDOM() LIMIT 1"
-
-    conn.execute("BEGIN IMMEDIATE")
-    account = conn.execute(sql, params).fetchone()
-
-    if account is None:
-        conn.execute("ROLLBACK")
-        return None
-
-    now_str = _utcnow().isoformat() + "Z"
-    lease_expires_at_str = (_utcnow() + timedelta(seconds=lease_seconds)).isoformat() + "Z"
-    token = "clm_" + secrets.token_urlsafe(9)
-
-    conn.execute(
-        """
-        UPDATE accounts SET
-            pool_status = 'claimed',
-            claimed_by = ?,
-            claimed_at = ?,
-            lease_expires_at = ?,
-            claim_token = ?,
-            last_claimed_at = ?,
-            updated_at = ?
-        WHERE id = ?
-        """,
-        (
-            f"{caller_id}:{task_id}",
-            now_str,
-            lease_expires_at_str,
-            token,
-            now_str,
-            now_str,
-            account["id"],
-        ),
-    )
-    conn.execute(
-        """
-        INSERT INTO account_claim_logs
-            (account_id, claim_token, caller_id, task_id, action, result, detail, created_at)
-        VALUES (?, ?, ?, ?, 'claim', NULL, NULL, ?)
-        """,
-        (account["id"], token, caller_id, task_id, now_str),
-    )
-    conn.execute("COMMIT")
-    return dict(account) | {
-        "claim_token": token,
-        "lease_expires_at": lease_expires_at_str,
-    }
 
 
 def release(
