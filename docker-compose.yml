@@ -11,7 +11,7 @@ services:
       - "5001:5000"
     environment:
       # Flask 核心配置
-      SECRET_KEY: "dev-secret-key-change-in-prod"
+      SECRET_KEY: "${SECRET_KEY:?Set SECRET_KEY in .env}"
       LOGIN_PASSWORD: "admin123"
       ALLOW_LOGIN_PASSWORD_CHANGE: "true"
 
@@ -19,17 +19,17 @@ services:
       FLASK_ENV: "production"
       SCHEDULER_AUTOSTART: "true"
 
-      # 数据库路径（挂载 volume 保证持久化）
-      DATABASE_PATH: "/app/data-docker/outlook_accounts.db"
+      # 数据库路径（挂载本地真实数据库）
+      DATABASE_PATH: "/app/data/outlook_accounts.db"
 
       # 临时邮箱配置（可按需修改）
       GPTMAIL_BASE_URL: "https://mail.chatgpt.org.uk"
       GPTMAIL_API_KEY: "gpt-test"
 
     volumes:
-      # 持久化数据库和运行时文件
-      - ./data-docker:/app/data-docker
-      - ./.runtime-docker:/app/.runtime
+      # 挂载本地真实数据库目录（确保本地 Flask 服务已停止，避免 SQLite 锁冲突）
+      - ./data:/app/data
+      - ./.runtime:/app/.runtime
 
     restart: unless-stopped
 

@@ -28,6 +28,17 @@ Issue Number / Issue 编号: N/A
 -
 -
 
+## Release notes / 发布日志
+
+<!-- Important rule about release notes: / 关于发布日志的重要规则： -->
+
+**发布日志生成规则：**
+- 发布日志统一以 Release 的发布时间为基准点
+- 需要往回查看，包含所有在该时间点之后的提交（不包含已包含在之前 Release 中的提交）
+- 请确保你的 PR 提交信息清晰明确，以便在生成发布日志时能够准确理解变更内容
+
+**示例：** 如果 Release v1.10.0 的发布时间是 2025-03-15，则 v1.10.0 的发布日志应包含从上一个 Release 之后（例如 v1.9.0）到 2025-03-15 之间的所有提交。
+
 ## Other information / 其他信息
 
 <!-- Any other information that is important to this PR such as screenshots of how the component looks before and after the change. / 与此 PR 相关的其他重要信息，例如组件更改前后的截图。 -->
