@@ -227,6 +227,16 @@ def release(
         """,
         (now_str, account_id),
     )
+    # Bug #28 fix: release 意味着本次领取被放弃（未成功注册），
+    # 需要同步清理 account_project_usage 里该账号由此 caller 产生的记录，
+    # 否则下次使用相同 project_key 的 claim-random 会被 NOT EXISTS 子查询错误排除。
+    conn.execute(
+        """
+        DELETE FROM account_project_usage
+        WHERE account_id = ? AND consumer_key = ?
+        """,
+        (account_id, caller_id),
+    )
     conn.execute(
         """
         INSERT INTO account_claim_logs
