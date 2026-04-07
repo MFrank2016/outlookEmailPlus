@@ -73,6 +73,33 @@ outlook-email-plus:*                     → True（正确识别为本地）
 - [ ] 正向用例3：官方远程镜像成功触发更新流程
 - [ ] 部署信息准确性验证
 
+**端到端实际测试记录（Docker Desktop / Windows）**：
+
+环境：
+- Docker Desktop 4.43.2（Engine 28.3.2，Context: desktop-linux）
+- Docker Compose v2.38.2
+
+执行：
+1) 启动负向用例（本地 build + 伪装官方镜像名）：
+   - 命令：`docker compose -f docker-compose.docker-api-test.yml up -d --build`
+   - 容器：`outlook-dockerapi-test`（端口 5003→5000）
+   - 镜像：`guangshanshui/outlook-email-plus:latest`（本地 build）
+   - 镜像 RepoDigests：`[]`（确认本地 build 特征）
+
+2) 通过脚本模拟前端触发更新（含 CSRF）：
+   - `POST /login` → ✅ success
+   - `GET /api/csrf-token` → ✅ 返回 csrf_token
+   - `POST /api/system/trigger-update?method=docker_api` + `X-CSRFToken` → ✅ 返回 403
+     - message：`检测到本地构建镜像（RepoDigests 为空），已按安全策略禁止 Docker API 一键更新...`
+   - 结论：策略A拦截生效；未创建 updater 容器；旧容器未被 stop
+
+3) 正向用例尝试（远程拉取官方镜像）被环境网络阻塞：
+   - `docker pull guangshanshui/outlook-email-plus:v1.11.0` → ❌ 超时
+   - 错误：`Client.Timeout exceeded while awaiting headers`（auth.docker.io token 请求超时）
+   - 影响：无法在当前环境完成“远程镜像 RepoDigests 非空 → 允许触发 updater → self_update 跑完”的正向验收
+
+**结论**：负向端到端已通过；正向端到端需解决 DockerHub 网络访问或改用可访问的镜像仓库/镜像源。
+
 **关联 Issue/PR**：待 Docker 容器内实际验收通过后提交
 
 ---

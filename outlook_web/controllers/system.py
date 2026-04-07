@@ -671,6 +671,8 @@ def api_deployment_info() -> Any:
     # - 否则回退到环境变量 DOCKER_IMAGE（可选）
     # - 再回退到 cgroup 近似判断
     image_name = os.getenv("DOCKER_IMAGE", "").strip()
+    docker_image_id = ""
+    docker_image_repo_digests: list[str] = []
 
     # 尝试通过 Docker API 获取镜像名（更准确；仅用于展示/提示）
     try:
@@ -679,8 +681,15 @@ def api_deployment_info() -> Any:
         socket_ok, _ = docker_update.check_docker_socket()
         if socket_ok:
             cinfo = docker_update.get_current_container_info()
-            if cinfo and cinfo.get("image"):
-                image_name = str(cinfo.get("image") or "").strip() or image_name
+            if cinfo:
+                if cinfo.get("image"):
+                    image_name = str(cinfo.get("image") or "").strip() or image_name
+                docker_image_id = str(cinfo.get("image_id") or "").strip()
+                repo_digests_raw = cinfo.get("image_repo_digests") or []
+                if isinstance(repo_digests_raw, list):
+                    docker_image_repo_digests = [
+                        str(x) for x in repo_digests_raw if str(x).strip()
+                    ]
     except Exception:
         pass
 
@@ -700,23 +709,53 @@ def api_deployment_info() -> Any:
             pass
 
     # 2. 判断是否为本地构建
+    # 注意：此前用 substring 检测 "test" 会误判 "latest"（包含 "test" 子串）。
+    # 这里改为：优先用 Docker API 的 RepoDigests 判断（更可靠），并对 tag 做精确判断。
+    def _parse_tag(ref: str) -> str:
+        ref = (ref or "").strip()
+        if not ref:
+            return ""
+        # digest 形式：repo@sha256:...
+        if "@" in ref:
+            ref = ref.split("@", 1)[0]
+        # tag 形式：repo:tag（仅当最后一个 ':' 之后不包含 '/' 才视为 tag）
+        if ":" in ref:
+            left, right = ref.rsplit(":", 1)
+            if "/" not in right:
+                return right
+        return ""
+
     is_local = False
     if image_name:
         deployment_info["image"] = image_name
-        lower_image = image_name.lower()
-        # 本地构建特征：包含 dev/local 关键字，或者没有 registry 前缀
-        if any(keyword in lower_image for keyword in ["dev", "local", "test"]):
-            is_local = True
-        elif "/" not in image_name or image_name.startswith("outlook-email"):
-            # 没有 registry 前缀（如 "outlook-email-dev:latest"），视为本地构建
-            is_local = True
+
+        # 2.1 若能拿到 RepoDigests：为空通常表示本地 build（或未从 registry pull）
+        if docker_image_id and isinstance(docker_image_repo_digests, list):
+            if len(docker_image_repo_digests) == 0:
+                is_local = True
+
+        # 2.2 兜底：基于镜像名结构判断
+        # 无 namespace（如 outlook-email-plus:latest）通常是本地构建或非官方镜像
+        if not is_local:
+            lower_image = image_name.lower()
+            if "/" not in image_name or lower_image.startswith("outlook-email"):
+                is_local = True
+            else:
+                tag = _parse_tag(image_name).lower()
+                # 仅对 tag 做精确判断，避免 latest 被误判
+                if (
+                    tag in ("dev", "local", "test")
+                    or tag.startswith("dev-")
+                    or tag.startswith("local-")
+                ):
+                    is_local = True
 
     deployment_info["is_local_build"] = is_local
 
     # 3. 判断是否使用固定标签
     uses_fixed_tag = False
-    if ":" in image_name:
-        tag = image_name.split(":")[-1]
+    tag = _parse_tag(image_name)
+    if tag:
         if tag not in ("latest", "main", "master", "dev"):
             uses_fixed_tag = True
 

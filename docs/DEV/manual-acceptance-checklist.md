@@ -116,7 +116,11 @@ docker compose -f docker-compose.docker-api-test.yml down
 
 **目标**：验证真正的远程镜像可以触发 Docker API 更新流程
 
-**前提**：需要 DockerHub 上存在一个可 pull 的官方镜像（如 `guangshanshui/outlook-email-plus:latest`）
+**前提**：需要 DockerHub 上存在一个可 pull 的官方镜像（如 `guangshanshui/outlook-email-plus:latest`），且当前环境能访问 DockerHub。
+
+> 说明：策略A会基于 **RepoDigests** 判断是否为“远程拉取镜像”。
+> - `docker pull` 得到的镜像通常 RepoDigests 非空（允许触发更新）
+> - `docker build` 得到的镜像通常 RepoDigests 为空（会被拦截）
 
 **步骤**：
 1. 从远程拉取镜像并启动：
@@ -150,8 +154,9 @@ docker compose -f docker-compose.docker-api-test.yml down
 **预期结果**：
 - ✅ 返回成功提示：`"更新任务已启动: oep-updater-xxxxx (短ID)"`
 - ✅ 后台创建了 updater 容器（可通过 `docker ps -a` 看到短暂存在的 `oep-updater-` 容器）
-- ✅ 原容器在 2 秒后被 stop（页面断开连接）
-- ✅ 如果远程镜像确实有新版本，会创建新容器；如果已是最新，updater 日志会显示 "镜像已是最新"
+- ✅ updater 容器会执行自更新流程：
+  - 如果 `docker pull` 后镜像 digest 与当前一致：**不会 stop 旧容器**，返回 `"镜像已是最新，无需更新"`
+  - 如果 digest 不一致：会进入 stop/start/healthcheck/rename/cleanup 流程（此时旧容器会被 stop，页面会断开）
 
 **验证 updater 日志**：
 ```bash
@@ -328,4 +333,18 @@ chmod +x test-docker-api-update.sh
 ### 4. 更新后无法访问
 - 检查新容器是否正常启动：`docker ps`
 - 检查新容器 healthcheck 状态：`docker inspect <container>`
-- 如果旧容器被保留为备份，可手动恢复：`docker start <old-container-name>_backup_<timestamp>`
+    - 如果旧容器被保留为备份，可手动恢复：`docker start <old-container-name>_backup_<timestamp>`
+
+### 5. 通过脚本调用 trigger-update 返回 CSRF_TOKEN_INVALID
+
+现象：
+- POST `/api/system/trigger-update` 返回 400，错误码 `CSRF_TOKEN_INVALID`，提示 "The CSRF token is missing"
+
+原因：
+- 该接口受 `flask-wtf` CSRF 保护，非浏览器脚本调用需要显式携带 CSRF token
+
+解决：
+1. 先登录：`POST /login`
+2. 获取 token：`GET /api/csrf-token`
+3. 再调用更新：`POST /api/system/trigger-update?method=docker_api` 并在 header 中加入：
+   - `X-CSRFToken: <token>`

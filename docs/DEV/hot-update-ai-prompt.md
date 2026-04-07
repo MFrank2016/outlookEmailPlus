@@ -237,6 +237,10 @@ docker-compose.yml           # app + watchtower 两个服务
 
 **验收状态**：待 Docker 容器内实际测试
 
+**补充：验收前代码层发现并修复的一个误判点**：
+- 旧逻辑用 substring 检测 `"test"` 会误判 `"latest"`（包含 `test` 子串）
+- 已改为：优先通过 Docker API 获取镜像 `RepoDigests` 判断；tag 判断改为精确匹配（避免误判）
+
 ---
 
 ## 参考文件清单
