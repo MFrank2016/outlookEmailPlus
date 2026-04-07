@@ -824,6 +824,32 @@
                                 </div>
                             </div>
                         </div>
+
+                        <!-- Watchtower 一键更新设置 -->
+                        <div class="card">
+                            <div class="card-header">
+                                <div class="card-title">🔄 一键更新 (Watchtower)</div>
+                            </div>
+                            <div class="card-body" style="padding: 1.5rem;">
+                                <div class="form-group">
+                                    <label class="form-label">Watchtower API 地址 <span style="font-size: 0.75rem; color: var(--text-muted); font-weight: 400;">（Docker 内网地址）</span></label>
+                                    <input type="text" class="form-input" id="watchtowerUrl" placeholder="http://watchtower:8080" style="max-width: 400px;">
+                                    <div class="form-hint">默认 http://watchtower:8080，仅 Docker 部署模式下可用</div>
+                                </div>
+                                <div class="form-group">
+                                    <label class="form-label">Watchtower API Token</label>
+                                    <input type="password" class="form-input" id="watchtowerToken" placeholder="输入 Watchtower HTTP API Token" autocomplete="off" style="max-width: 400px;">
+                                    <div class="form-hint">与 docker-compose 中 WATCHTOWER_HTTP_API_TOKEN 保持一致。留空则读取环境变量。</div>
+                                </div>
+                                <div class="form-group" style="margin-top: 0.5rem;">
+                                    <div style="display: flex; align-items: center; gap: 8px;">
+                                        <button class="btn btn-outline" onclick="testWatchtower()" id="btnTestWatchtower" style="font-size: 0.85rem;">🔗 测试连通性</button>
+                                        <span id="watchtowerTestResult" style="font-size: 0.85rem;"></span>
+                                    </div>
+                                    <div class="form-hint">验证 Watchtower 服务是否可达且 Token 正确</div>
+                                </div>
+                            </div>
+                        </div>
                     </div>
 
                 </div>

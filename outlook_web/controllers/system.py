@@ -400,17 +400,40 @@ def api_version_check() -> Any:
 
 @login_required
 def api_trigger_update() -> Any:
-    """触发 Watchtower 一键更新（调用 Watchtower HTTP API）"""
+    """触发 Watchtower 一键更新（调用 Watchtower HTTP API）
+
+    优先从数据库读取 watchtower_url / watchtower_token，
+    如未配置则回退到环境变量 WATCHTOWER_API_URL / WATCHTOWER_HTTP_API_TOKEN。
+    """
     import os
     import urllib.error
     import urllib.request
 
-    watchtower_url = os.getenv("WATCHTOWER_API_URL", "http://watchtower:8080")
-    watchtower_token = os.getenv("WATCHTOWER_HTTP_API_TOKEN", "")
+    from outlook_web.security.crypto import decrypt_data, is_encrypted
+
+    # 优先从数据库读取，回退到环境变量
+    wt_url_raw = settings_repo.get_setting("watchtower_url", "")
+    wt_token_raw = settings_repo.get_setting("watchtower_token", "")
+
+    watchtower_url = (
+        wt_url_raw.strip()
+        if wt_url_raw
+        else os.getenv("WATCHTOWER_API_URL", "http://watchtower:8080")
+    )
+    watchtower_token = ""
+    if wt_token_raw:
+        watchtower_token = (
+            decrypt_data(wt_token_raw) if is_encrypted(wt_token_raw) else wt_token_raw
+        )
+    if not watchtower_token:
+        watchtower_token = os.getenv("WATCHTOWER_HTTP_API_TOKEN", "")
 
     if not watchtower_token:
         return jsonify(
-            {"success": False, "message": "WATCHTOWER_HTTP_API_TOKEN 未配置"}
+            {
+                "success": False,
+                "message": "Watchtower Token 未配置，请在系统设置 → 一键更新中配置",
+            }
         ), 500
 
     try:
@@ -433,10 +456,93 @@ def api_trigger_update() -> Any:
             ), 502
     except urllib.error.URLError as e:
         return jsonify(
-            {"success": False, "message": f"无法连接 Watchtower: {e.reason}"}
+            {
+                "success": False,
+                "message": f"无法连接 Watchtower ({watchtower_url}): {e.reason}",
+            }
         ), 503
     except Exception as e:
         return jsonify({"success": False, "message": f"触发更新失败: {str(e)}"}), 500
+
+
+@login_required
+def api_test_watchtower() -> Any:
+    """测试 Watchtower 连通性：用配置的 URL + Token 请求 /v1/update (HEAD)"""
+    import os
+    import urllib.error
+    import urllib.request
+
+    from outlook_web.security.crypto import decrypt_data, is_encrypted
+
+    data = request.get_json(silent=True) or {}
+    wt_url = str(data.get("url", "")).strip()
+    wt_token = str(data.get("token", "")).strip()
+
+    # 如果前端没传值，从数据库 / 环境变量读取
+    if not wt_url:
+        wt_url_raw = settings_repo.get_setting("watchtower_url", "")
+        wt_url = (
+            wt_url_raw.strip()
+            if wt_url_raw
+            else os.getenv("WATCHTOWER_API_URL", "http://watchtower:8080")
+        )
+    if not wt_token:
+        wt_token_raw = settings_repo.get_setting("watchtower_token", "")
+        if wt_token_raw:
+            wt_token = (
+                decrypt_data(wt_token_raw)
+                if is_encrypted(wt_token_raw)
+                else wt_token_raw
+            )
+        if not wt_token:
+            wt_token = os.getenv("WATCHTOWER_HTTP_API_TOKEN", "")
+
+    if not wt_url:
+        return jsonify({"success": False, "message": "Watchtower URL 未配置"})
+
+    # 先测试连通性（GET /v1/update 返回 200 表示 API 可达）
+    try:
+        test_req = urllib.request.Request(
+            f"{wt_url}/v1/update",
+            method="GET",
+            headers={
+                "Authorization": f"Bearer {wt_token}",
+            },
+        )
+        with urllib.request.urlopen(test_req, timeout=5) as resp:
+            return jsonify(
+                {
+                    "success": True,
+                    "message": f"Watchtower 连通正常 ({wt_url})",
+                    "message_en": f"Watchtower is reachable at {wt_url}",
+                }
+            )
+    except urllib.error.HTTPError as e:
+        # 401 说明 API 可达但 Token 错误
+        if e.code == 401:
+            return jsonify(
+                {
+                    "success": False,
+                    "message": f"Watchtower 可达但认证失败，请检查 Token",
+                    "message_en": "Watchtower is reachable but authentication failed. Check your token.",
+                }
+            )
+        return jsonify(
+            {
+                "success": False,
+                "message": f"Watchtower 返回状态码 {e.code}",
+            }
+        )
+    except urllib.error.URLError as e:
+        return jsonify(
+            {
+                "success": False,
+                "message": f"无法连接 Watchtower ({wt_url}): {e.reason}",
+                "message_en": f"Cannot connect to Watchtower ({wt_url}): {e.reason}",
+            }
+        )
+    except Exception as e:
+        return jsonify({"success": False, "message": f"测试失败: {str(e)}"})
 
 
 @api_key_required

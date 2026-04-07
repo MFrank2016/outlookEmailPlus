@@ -1732,6 +1732,12 @@ ${details}
                     if (tgProxy) tgProxy.value = (data.settings && data.settings.telegram_proxy_url) || '';
                     if (emailEnabled) emailEnabled.checked = !!data.settings.email_notification_enabled;
                     if (emailRecipient) emailRecipient.value = data.settings.email_notification_recipient || '';
+
+                    // 加载 Watchtower 一键更新设置
+                    const wtUrl = document.getElementById('watchtowerUrl');
+                    const wtToken = document.getElementById('watchtowerToken');
+                    if (wtUrl) wtUrl.value = (data.settings && data.settings.watchtower_url) || '';
+                    if (wtToken) wtToken.value = (data.settings && data.settings.watchtower_token) || '';
                 }
             } catch (error) {
                 console.error('loadSettings error:', error);
@@ -2071,6 +2077,16 @@ ${details}
             }
             settings.telegram_proxy_url = tgProxyUrl;
 
+            // Watchtower 一键更新配置
+            const wtUrlEl = document.getElementById('watchtowerUrl');
+            const wtTokenEl = document.getElementById('watchtowerToken');
+            const wtUrl = wtUrlEl ? wtUrlEl.value.trim() : '';
+            const wtToken = wtTokenEl ? wtTokenEl.value.trim() : '';
+            settings.watchtower_url = wtUrl;
+            if (wtToken) {
+                settings.watchtower_token = wtToken;
+            }
+
             try {
                 const response = await fetch('/api/settings', {
                     method: 'PUT',
@@ -2127,6 +2143,40 @@ ${details}
                 const data = await resp.json();
                 if (data.ok) {
                     if (resultEl) { resultEl.textContent = '✅ 连通'; resultEl.style.color = 'var(--success, green)'; }
+                } else {
+                    if (resultEl) { resultEl.textContent = `❌ ${data.message || '失败'}`; resultEl.style.color = 'var(--danger, red)'; }
+                }
+            } catch (e) {
+                if (resultEl) { resultEl.textContent = `❌ ${e.message}`; resultEl.style.color = 'var(--danger, red)'; }
+            } finally {
+                if (btn) { btn.disabled = false; btn.textContent = translateAppTextLocal('🔗 测试连通性'); }
+            }
+        }
+
+        async function testWatchtower() {
+            const btn = document.getElementById('btnTestWatchtower');
+            const resultEl = document.getElementById('watchtowerTestResult');
+            const urlInput = document.getElementById('watchtowerUrl');
+            const tokenInput = document.getElementById('watchtowerToken');
+            const wtUrl = urlInput ? urlInput.value.trim() : '';
+            const wtToken = tokenInput ? tokenInput.value.trim() : '';
+            if (btn) { btn.disabled = true; btn.textContent = translateAppTextLocal('⏳ 测试中…'); }
+            if (resultEl) resultEl.textContent = '';
+            try {
+                const body = {};
+                if (wtUrl) body.url = wtUrl;
+                if (wtToken && !wtToken.startsWith('****')) body.token = wtToken;
+                const resp = await fetch('/api/system/test-watchtower', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': getCSRFToken()
+                    },
+                    body: JSON.stringify(body)
+                });
+                const data = await resp.json();
+                if (data.success) {
+                    if (resultEl) { resultEl.textContent = '✅ 连通正常'; resultEl.style.color = 'var(--success, green)'; }
                 } else {
                     if (resultEl) { resultEl.textContent = `❌ ${data.message || '失败'}`; resultEl.style.color = 'var(--danger, red)'; }
                 }

@@ -53,5 +53,10 @@ def create_blueprint() -> Blueprint:
         view_func=system_controller.api_trigger_update,
         methods=["POST"],
     )
+    bp.add_url_rule(
+        "/api/system/test-watchtower",
+        view_func=system_controller.api_test_watchtower,
+        methods=["POST"],
+    )
 
     return bp
