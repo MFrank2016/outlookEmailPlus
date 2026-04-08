@@ -8,7 +8,6 @@ on:
       - main
       - master
       - dev          # dev 分支自动构建 :dev 标签
-      - hotupdate-test  # 临时：测试热更新镜像，验证后移除
     paths:
       - '**.py'
       - 'pyproject.toml'

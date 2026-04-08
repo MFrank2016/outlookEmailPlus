@@ -4,8 +4,6 @@
 启动脚本 - 智能初始化环境变量并启动 Flask 应用
 """
 
-# hotupdate-test: manual UI test run #2
-
 import os
 import secrets
 import shutil
