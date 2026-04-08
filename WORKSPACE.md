@@ -4,6 +4,55 @@
 
 ---
 
+## 2026-04-09
+
+### 操作记录
+
+#### 1. hotupdate-test 分支端到端测试与合并
+
+**时间**：2026-04-09
+
+**背景**：`hotupdate-test` 分支在 `main` 基础上新增 24 个提交，用于热更新功能的端到端验证（Watchtower + Docker API 双模式）。分支使用 GHCR 远程镜像（`ghcr.io/zeropointsix/outlook-email-plus:hotupdate-test`）进行了完整的两种更新方式的实际测试。
+
+**测试环境**：
+- 端口 5002：Watchtower 模式（`docker-compose.hotupdate-test.yml`，含 Watchtower sidecar）
+- 端口 5003：Docker API 模式（`docker-compose.docker-api-test.yml`，挂载 docker.sock）
+- 镜像：`ghcr.io/zeropointsix/outlook-email-plus:hotupdate-test`
+
+**发现并修复的问题**：
+
+| # | 问题 | 修复 | Commit |
+|---|------|------|--------|
+| 1 | GHCR 镜像不在白名单 | 添加 `ghcr.io/zeropointsix/` 到 ALLOWED_IMAGE_PREFIXES | 早期提交 |
+| 2 | 本地镜像检测误判 | 重写 `_looks_like_local_image_ref()` 为 namespace 白名单 | 早期提交 |
+| 3 | 版本比较 pre-release 后缀问题 | `_version_gt()` 忽略 `-hotupdate-test` 等后缀 | 早期提交 |
+| 4 | Watchtower 连通测试超时 (5s) | 增加到 35s，添加详细注释说明 Watchtower 同步行为 | `6441de2` |
+| 5 | Emoji 前缀 i18n 翻译匹配失败 | 在 exactMap 中添加 `🔄`/`🚀` 前缀变体 | `6441de2` |
+| 6 | 设置页 Tab 标签缺少翻译 | 添加 基础/临时邮箱/API 安全/自动化 翻译 | `6441de2` |
+| 7 | Watchtower 200 响应误判为"更新成功" | 改为 `already_latest: true`（Watchtower 同步完成 → 未更新我们） | `2b49547` |
+| 8 | 连通性/更新结果 i18n 缺失 | 添加 连通正常/检查完毕/测试中/更新失败 等翻译 | `2b49547` |
+| 9 | 测试断言不匹配 | 更新 `test_watchtower_success` 断言 `already_latest` + `"检查完毕"` | `3672888` |
+
+**合并过程**：
+
+1. 版本号从 `1.12.8-hotupdate-test` 回退至 `1.12.0`（与 main 一致）
+2. 删除测试专用 compose 文件（`docker-compose.hotupdate-test.yml`、`docker-compose.docker-api-test.yml`）
+3. 移除 CI docker-build-push 中 `hotupdate-test` 分支触发
+4. 清理 `start.py` 测试注释、恢复 `WORKSPACE.md`
+5. Fast-forward 合并到 main（`6f5c707`）
+6. 推送 main、删除远程和本地 `hotupdate-test` 分支
+7. 停止并删除所有测试容器和 volume
+
+**Watchtower 同步行为关键发现**：
+
+Watchtower `POST /v1/update` 是**同步接口**——完整执行镜像拉取和 digest 比对后才返回 200。如果我们的容器需要更新，Watchtower 会在返回前 kill 旧容器并启动新容器，因此**我们永远收不到 200 响应**。反过来，如果收到了 200 响应，说明 Watchtower 判定当前已是最新版本，无需更新。
+
+**Watchtower DNS 问题**：
+
+测试环境中 Watchtower 将 `ghcr.io` 解析为 `198.18.2.198`（VPN/代理干扰），导致 HEAD 请求失败，fallback 到完整 pull（需 25-30s），这是连通测试超时需要从 5s 增加到 35s 的根本原因。
+
+---
+
 ## 2026-04-07
 
 ### 操作记录
@@ -735,7 +784,9 @@ docker rm -f oep-e2e-test
 
 ---
 
-### 当前未提交修改（A2 方案 + 文档更新）
+### 历史记录：A2 方案开发期间的修改清单（已合并至 main）
+
+> 以下修改已通过 `hotupdate-test` 分支合并到 main（2026-04-09），此处仅作历史参考。
 
 | 文件 | 修改类型 | 说明 |
 |------|---------|------|
@@ -746,9 +797,5 @@ docker rm -f oep-e2e-test
 | `templates/index.html` | Modified | deploymentWarnings 容器 |
 | `tests/test_error_and_trace.py` | Modified | 适配 healthz 新字段 |
 | `tests/test_smoke_contract.py` | Modified | 适配 healthz 新字段 |
-| `docker-compose.docker-api-test.yml` | **新增** | Docker API 测试 compose |
-| `docker-compose.hotupdate-test.yml` | Modified | 新增 DOCKER_IMAGE 环境变量 |
 | `docs/DEV/hot-update-ai-prompt.md` | Modified | 文档清理 + 补充 |
 | `docs/DEV/hot-update-baseline.md` | Modified | 文档补充 |
-| `WORKSPACE.md` | Modified | 工作区操作记录 |
-| `VERIFICATION_PROMPT.md` | **新增** | 功能验证提示词（给其他 AI 审查用） |

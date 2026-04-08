@@ -2,6 +2,45 @@
 
 All notable changes to OutlookMail Plus are documented in this file.
 
+## [v1.12.0] - 2026-04-09
+
+### 新功能 / New Features
+
+- **热更新双模式支持**：新增 Watchtower 和 Docker API（A2 helper 容器）两种一键更新方式，支持在设置页面切换
+- **Watchtower 集成**：连通性测试、手动触发更新、已是最新版本智能检测（基于 Watchtower 同步行为）
+- **Docker API 自更新**：digest 预检查避免无效更新、辅助容器（oep-updater）执行 12 步更新流程、失败自动回滚
+- **GHCR 镜像支持**：白名单新增 `ghcr.io/zeropointsix/` 前缀，支持 GitHub Container Registry 镜像
+- **版本检测增强**：`_version_gt()` 支持 pre-release 后缀（如 `-hotupdate-test`），自动忽略后缀仅比较语义版本号
+- **部署信息 API**：`/api/system/deployment-info` 返回镜像名、标签、本地构建检测、Docker API 可用性
+- **healthz 增强**：新增 `boot_id`（进程指纹）和 `version` 字段，支持前端精确检测容器重启
+
+### 修复 / Bug Fixes
+
+- 修复 Watchtower 连通测试 5s 超时（Watchtower 同步检查需 25-30s），增加到 35s
+- 修复 Watchtower 200 响应被误判为"更新成功"（实际为"已是最新"）
+- 修复 GHCR 镜像不在白名单导致 Docker API 更新被拦截
+- 修复本地镜像检测 `_looks_like_local_image_ref()` 误判远程镜像
+- 修复 `docker_api_available` 仅检查 Watchtower 不检查 Docker API
+- 修复 Docker API 自更新同步调用导致容器停止时响应中断（改为后台线程 + 立即返回）
+- 修复 `ModuleNotFoundError: outlook_web.models.AuditLog` 导致更新接口 500
+- 修复前端 `waitForRestart()` 无法检测容器真正重启（新增 boot_id 变化检测）
+
+### i18n
+
+- 新增 emoji 前缀 i18n 变体：`🔄 一键更新配置`、`🚀 触发容器更新`
+- 新增设置页 Tab 翻译：基础 / 临时邮箱 / API 安全 / 自动化
+- 新增连通性/更新状态翻译：连通正常 / 检查完毕 / 测试中 / 更新失败
+- `testWatchtower()` 结果文本经过 `translateAppTextLocal()` 翻译
+- `manualTriggerUpdate()` 使用 `pickApiMessage()` 实现双语消息
+
+### 安全
+
+- 镜像白名单校验 + RepoDigests 检测双重防护，禁止本地构建镜像触发更新
+- Docker API 自更新默认关闭，需显式设置 `DOCKER_SELF_UPDATE_ALLOW=true`
+- 更新操作记录审计日志
+
+---
+
 ## [v1.11.0] - 2026-04-03
 
 ### 新功能 / New Features
