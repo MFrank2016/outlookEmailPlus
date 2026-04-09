@@ -18,7 +18,7 @@ OutlookMail Plus 是一款面向个人与团队的注册邮箱管理器。
 
 ## 演示站点
 
-演示站点：https://gbcoinystsyz.ap-southeast-1.clawcloudrun.com
+演示站点：https://demo.outlookmailplus.tech/
 登录密码：`12345678`
 
 站点内置 10 个邮箱账号用于演示，数据会定期重置。请勿删除演示账号或将其用于个人用途。
