@@ -177,4 +177,3 @@ class Graph401ImapFallbackRegressionTests(unittest.TestCase):
         self.assertTrue(data.get("success"))
         self.assertEqual(data.get("data", {}).get("verification_code"), "123456")
         self.assertEqual(mock_get_imap.call_count, 2)
-

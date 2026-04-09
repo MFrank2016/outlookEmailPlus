@@ -223,7 +223,7 @@ try:
     from dotenv import load_dotenv
 
     load_dotenv()
-    from outlook_web.security.crypto import encrypt_data, decrypt_data
+    from outlook_web.security.crypto import decrypt_data, encrypt_data
 
     enc_rt = encrypt_data(refresh_token)
     print(f"  加密后长度: {len(enc_rt)}")

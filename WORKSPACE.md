@@ -8,6 +8,65 @@
 
 ### 操作记录
 
+#### 7. v1.14.0 发布执行 + CI/CD 与镜像仓库核对（按实际回填）
+
+**时间**：2026-04-09
+
+**执行目标**：
+- 基于 `v1.13.0..HEAD` 生成 v1.14.0 发布内容，完成版本升级、测试、构建、Release 发布，并核对 CI/CD 与镜像仓库状态。
+
+**本地发布动作**：
+
+1. 版本与记录同步
+   - `outlook_web/__init__.py`：`1.13.0` → `1.14.0`
+   - `README.md`、`README.en.md`：稳定版本号更新为 `v1.14.0`
+   - `CHANGELOG.md`：新增 `## [v1.14.0] - 2026-04-09`
+   - `docs/DEVLOG.md`：新增 v1.14.0 章节（新增/修复/重要变更/测试验证 + CI/CD 实际状态）
+
+2. 测试执行
+   - 首次执行：`python -m unittest discover -s tests -v`
+   - 初次失败原因：`tests/test_import_and_fetch.py` 使用 `pytest.skip(..., allow_module_level=True)`，被 `unittest discover` 当作导入错误处理
+   - 修复：改为 `raise unittest.SkipTest("manual live diagnostic script")`
+   - 复跑结果：`Ran 952 tests in 168.755s`，`OK (skipped=8)`
+
+3. 构建与产物
+   - 构建命令：`docker build -t outlook-email-plus:v1.14.0 .`
+   - 结果：成功（image digest: `sha256:c3a1e16a8779948a100890dae8f1373616e55436c4a24c935ac31a2fc792202b`）
+   - 导出产物：
+     - `dist/outlook-email-plus-v1.14.0-docker.tar`
+     - `dist/outlookEmailPlus-v1.14.0-src.zip`
+
+4. 发布到 GitHub Release
+   - 提交：`fa795b8`（`docs(release): v1.14.0`）
+   - 推送：`main` + tag `v1.14.0`
+   - Release：`https://github.com/ZeroPointSix/outlookEmailPlus/releases/tag/v1.14.0`
+   - 已上传附件：
+     - `outlook-email-plus-v1.14.0-docker.tar`（204,254,208 bytes）
+     - `outlookEmailPlus-v1.14.0-src.zip`（3,216,216 bytes）
+
+**CI/CD 核对（对应 commit: `fa795b8`）**：
+
+- ✅ Python Tests：Run `24186894407`
+- ✅ SonarCloud Scan：Run `24186894434`
+- ❌ Code Quality：Run `24186894405`
+  - 失败点：Black 格式检查（示例日志显示 `outlook_web/controllers/temp_emails.py`、`outlook_web/db.py` 将被重排）
+- ❌ Build and Push Docker Image（main）：Run `24186894400`
+  - 原因：`quality-gate` 失败，`build-and-push` 被跳过
+- ❌ Build and Push Docker Image（tag v1.14.0）：Run `24186895639`
+  - 原因同上
+- ✅ Create GitHub Release：Run `24186895629`
+
+**镜像仓库核对**：
+
+- Docker Hub：`docker manifest inspect guangshanshui/outlook-email-plus:v1.14.0`
+  - 结果：`no such manifest`
+- GHCR：`docker manifest inspect ghcr.io/zeropointsix/outlook-email-plus:v1.14.0`
+  - 结果：`manifest unknown`
+
+**结论**：
+- v1.14.0 的 GitHub Release 页面和附件已就绪；
+- 但 DockerHub/GHCR 的 `v1.14.0` 镜像尚未发布成功，需先修复格式门禁（Black）后重新触发 Docker 工作流。
+
 #### 6. Issue #32 修复落地（全选跨分页 + 删除 500）
 
 **时间**：2026-04-09

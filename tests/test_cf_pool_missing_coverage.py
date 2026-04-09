@@ -8,6 +8,7 @@ CF 临时邮箱接入邮箱池 — 补充缺失的测试覆盖
 4. Controller CF 保护（编辑/删除返回 403）
 5. _validate_provider() 边界条件
 """
+
 from __future__ import annotations
 
 import json
@@ -27,15 +28,9 @@ class RefreshExclusionTests(unittest.TestCase):
         from outlook_web.services.refresh import is_refreshable_outlook_account
 
         # CF provider 应始终返回 False
-        self.assertFalse(
-            is_refreshable_outlook_account("temp_mail", provider="cloudflare_temp_mail")
-        )
-        self.assertFalse(
-            is_refreshable_outlook_account("outlook", provider="cloudflare_temp_mail")
-        )
-        self.assertFalse(
-            is_refreshable_outlook_account(None, provider="cloudflare_temp_mail")
-        )
+        self.assertFalse(is_refreshable_outlook_account("temp_mail", provider="cloudflare_temp_mail"))
+        self.assertFalse(is_refreshable_outlook_account("outlook", provider="cloudflare_temp_mail"))
+        self.assertFalse(is_refreshable_outlook_account(None, provider="cloudflare_temp_mail"))
 
     def test_is_refreshable_outlook_account_allows_outlook(self):
         from outlook_web.services.refresh import is_refreshable_outlook_account
@@ -56,9 +51,7 @@ class RefreshExclusionTests(unittest.TestCase):
         from outlook_web.services.refresh import is_refreshable_outlook_account
 
         # provider 应做 strip 处理（含空格的也应排除）
-        self.assertFalse(
-            is_refreshable_outlook_account(None, provider=" cloudflare_temp_mail ")
-        )
+        self.assertFalse(is_refreshable_outlook_account(None, provider=" cloudflare_temp_mail "))
 
     def test_build_refreshable_outlook_account_where_excludes_cf(self):
         from outlook_web.services.refresh import build_refreshable_outlook_account_where
@@ -66,16 +59,14 @@ class RefreshExclusionTests(unittest.TestCase):
         sql = build_refreshable_outlook_account_where()
         # 必须包含排除 cloudflare_temp_mail 的条件
         self.assertIn("cloudflare_temp_mail", sql)
-        self.assertIn("!=" , sql)
+        self.assertIn("!=", sql)
         self.assertIn("account_type", sql)
         self.assertIn("provider", sql)
 
     def test_build_refreshable_outlook_account_where_custom_columns(self):
         from outlook_web.services.refresh import build_refreshable_outlook_account_where
 
-        sql = build_refreshable_outlook_account_where(
-            column="a_type", provider_column="prov"
-        )
+        sql = build_refreshable_outlook_account_where(column="a_type", provider_column="prov")
         self.assertIn("a_type", sql)
         self.assertIn("prov", sql)
 
@@ -94,9 +85,7 @@ class MailboxResolverCFTests(unittest.TestCase):
             from outlook_web.db import get_db
 
             db = get_db()
-            db.execute(
-                "DELETE FROM accounts WHERE email LIKE '%@cf_resolver.test'"
-            )
+            db.execute("DELETE FROM accounts WHERE email LIKE '%@cf_resolver.test'")
             db.commit()
 
     def tearDown(self):
@@ -104,9 +93,7 @@ class MailboxResolverCFTests(unittest.TestCase):
             from outlook_web.db import get_db
 
             db = get_db()
-            db.execute(
-                "DELETE FROM accounts WHERE email LIKE '%@cf_resolver.test'"
-            )
+            db.execute("DELETE FROM accounts WHERE email LIKE '%@cf_resolver.test'")
             db.commit()
 
     def test_cf_pool_account_returns_kind_temp(self):
@@ -276,9 +263,7 @@ class InsertClaimedAccountTests(unittest.TestCase):
                 "DELETE FROM account_claim_logs WHERE account_id IN "
                 "(SELECT id FROM accounts WHERE email LIKE '%@insert_test.pool')"
             )
-            conn.execute(
-                "DELETE FROM accounts WHERE email LIKE '%@insert_test.pool'"
-            )
+            conn.execute("DELETE FROM accounts WHERE email LIKE '%@insert_test.pool'")
             conn.commit()
         finally:
             conn.close()
@@ -359,12 +344,10 @@ class InsertClaimedAccountTests(unittest.TestCase):
             self.assertEqual(result["email"], "proj_cf@insert_test.pool")
 
             # 验证 project usage 被写入
-            row = conn.execute(
-                """
+            row = conn.execute("""
                 SELECT * FROM account_project_usage
                 WHERE project_key = 'my_project'
-                """
-            ).fetchone()
+                """).fetchone()
             self.assertIsNotNone(row)
         finally:
             conn.close()

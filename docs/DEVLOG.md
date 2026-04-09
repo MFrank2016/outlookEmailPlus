@@ -33,9 +33,27 @@
 - 构建验证：`docker build -t outlook-email-plus:v1.14.0 .`
   - 状态：成功
   - 镜像摘要：`sha256:c3a1e16a8779948a100890dae8f1373616e55436c4a24c935ac31a2fc792202b`
-- 发布产物：
+- 发布产物（已上传 GitHub Release）：
   - `dist/outlook-email-plus-v1.14.0-docker.tar`
   - `dist/outlookEmailPlus-v1.14.0-src.zip`
+- GitHub Release：`https://github.com/ZeroPointSix/outlookEmailPlus/releases/tag/v1.14.0`
+
+### CI/CD 与镜像仓库核对（按实际回填）
+
+- 目标提交：`fa795b8`（`docs(release): v1.14.0`）
+- GitHub Actions：
+  - ✅ Python Tests：`24186894407`
+  - ✅ SonarCloud Scan：`24186894434`
+  - ❌ Code Quality：`24186894405`（Black 检查未通过，日志提示会重排 `outlook_web/controllers/temp_emails.py`、`outlook_web/db.py` 等文件）
+  - ❌ Build and Push Docker Image（main）：`24186894400`（`quality-gate` 失败，`build-and-push` job 被跳过）
+  - ❌ Build and Push Docker Image（tag `v1.14.0`）：`24186895639`（同上）
+  - ✅ Create GitHub Release：`24186895629`
+- 镜像仓库检查：
+  - Docker Hub：`docker manifest inspect guangshanshui/outlook-email-plus:v1.14.0` → `no such manifest`
+  - GHCR：`docker manifest inspect ghcr.io/zeropointsix/outlook-email-plus:v1.14.0` → `manifest unknown`
+- 结论：
+  - Release 页面与附件已发布完成；
+  - 但 `v1.14.0` 镜像尚未成功推送到 DockerHub/GHCR，需先修复代码格式门禁后再触发镜像构建发布。
 
 ## v1.13.0 - 热更新双模式端到端验证与合并
 

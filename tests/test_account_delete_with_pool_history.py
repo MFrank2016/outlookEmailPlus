@@ -32,9 +32,7 @@ class AccountDeleteWithPoolHistoryTests(unittest.TestCase):
         self.assertEqual(resp.status_code, 200)
         self.assertTrue(resp.get_json().get("success"))
 
-    def _insert_account_with_pool_history(
-        self, prefix: str = "issue32"
-    ) -> tuple[int, str]:
+    def _insert_account_with_pool_history(self, prefix: str = "issue32") -> tuple[int, str]:
         with self.app.app_context():
             from outlook_web.db import get_db
 
@@ -92,12 +90,8 @@ class AccountDeleteWithPoolHistoryTests(unittest.TestCase):
             from outlook_web.db import get_db
 
             db = get_db()
-            account_row = db.execute(
-                "SELECT id FROM accounts WHERE id = ?", (account_id,)
-            ).fetchone()
-            claim_row = db.execute(
-                "SELECT id FROM account_claim_logs WHERE account_id = ?", (account_id,)
-            ).fetchone()
+            account_row = db.execute("SELECT id FROM accounts WHERE id = ?", (account_id,)).fetchone()
+            claim_row = db.execute("SELECT id FROM account_claim_logs WHERE account_id = ?", (account_id,)).fetchone()
             usage_row = db.execute(
                 "SELECT id FROM account_project_usage WHERE account_id = ?",
                 (account_id,),

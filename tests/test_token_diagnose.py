@@ -1,6 +1,7 @@
 """
 Token 逐步诊断脚本 — 逐层排查 Graph API / IMAP 的问题
 """
+
 import json
 import sys
 import traceback
@@ -180,8 +181,8 @@ if access_token:
 section("第 3 步: IMAP OAuth2 登录测试 — outlook.live.com")
 # ============================================================
 try:
-    import imaplib
     import base64
+    import imaplib
 
     if not access_token:
         info("跳过: 无可用 access_token")
@@ -272,7 +273,9 @@ try:
     db_path = "data/outlook_accounts.db"
     conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
-    row = conn.execute("SELECT email, client_id, refresh_token, account_type, status FROM accounts WHERE email = ?", (EMAIL,)).fetchone()
+    row = conn.execute(
+        "SELECT email, client_id, refresh_token, account_type, status FROM accounts WHERE email = ?", (EMAIL,)
+    ).fetchone()
 
     if row:
         ok(f"找到账号记录")
@@ -280,7 +283,7 @@ try:
         print(f"  client_id:   {row['client_id']}")
         print(f"  account_type:{row['account_type']}")
         print(f"  status:      {row['status']}")
-        stored_rt = row['refresh_token'] or ""
+        stored_rt = row["refresh_token"] or ""
         print(f"  refresh_token 长度: {len(stored_rt)}")
         print(f"  refresh_token 前50:  {stored_rt[:50]}")
         if stored_rt.startswith("enc:"):
@@ -288,8 +291,10 @@ try:
             try:
                 # 解密看看
                 from dotenv import load_dotenv
+
                 load_dotenv()
                 from outlook_web.security.crypto import decrypt_data
+
                 decrypted = decrypt_data(stored_rt)
                 print(f"  解密后长度: {len(decrypted)}")
                 print(f"  解密后前50: {decrypted[:50]}")

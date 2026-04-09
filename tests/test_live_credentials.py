@@ -1,6 +1,7 @@
 """
 真实凭据集成测试 — 验证 Graph API + IMAP 回退机制
 """
+
 from __future__ import annotations
 
 import json
@@ -82,7 +83,8 @@ def test_refresh_token():
 def test_graph_get_emails():
     print("\n=== 测试 3: Graph API 获取邮件列表 ===")
     import requests as req
-    from outlook_web.services.graph import get_emails_graph, get_access_token_graph_result
+
+    from outlook_web.services.graph import get_access_token_graph_result, get_emails_graph
 
     # 3a. 先诊断原始 HTTP 响应
     print("  --- 3a. 诊断原始 Graph API 响应 ---")
@@ -112,7 +114,11 @@ def test_graph_get_emails():
     # 3b. 通过封装函数调用
     print("  --- 3b. 通过 get_emails_graph 封装调用 ---")
     result = get_emails_graph(CLIENT_ID, REFRESH_TOKEN, folder="inbox", skip=0, top=5)
-    report("请求成功", result.get("success"), json.dumps(result.get("error"), ensure_ascii=False)[:300] if not result.get("success") else "")
+    report(
+        "请求成功",
+        result.get("success"),
+        json.dumps(result.get("error"), ensure_ascii=False)[:300] if not result.get("success") else "",
+    )
 
     if result.get("success"):
         emails = result.get("emails", [])
@@ -179,11 +185,19 @@ def test_imap_fallback():
         from outlook_web.services.imap import get_emails_imap_with_server
 
         result = get_emails_imap_with_server(
-            EMAIL, CLIENT_ID, REFRESH_TOKEN,
-            folder="inbox", skip=0, top=5,
+            EMAIL,
+            CLIENT_ID,
+            REFRESH_TOKEN,
+            folder="inbox",
+            skip=0,
+            top=5,
             server="outlook.live.com",
         )
-        report("IMAP (New) 获取成功", result.get("success"), json.dumps(result.get("error"), ensure_ascii=False)[:200] if not result.get("success") else "")
+        report(
+            "IMAP (New) 获取成功",
+            result.get("success"),
+            json.dumps(result.get("error"), ensure_ascii=False)[:200] if not result.get("success") else "",
+        )
         if result.get("success"):
             emails = result.get("emails", [])
             report(f"获取到 {len(emails)} 封邮件", True)
@@ -198,11 +212,19 @@ def test_imap_fallback():
         from outlook_web.services.imap import get_emails_imap_with_server
 
         result = get_emails_imap_with_server(
-            EMAIL, CLIENT_ID, REFRESH_TOKEN,
-            folder="inbox", skip=0, top=5,
+            EMAIL,
+            CLIENT_ID,
+            REFRESH_TOKEN,
+            folder="inbox",
+            skip=0,
+            top=5,
             server="outlook.office365.com",
         )
-        report("IMAP (Old) 获取成功", result.get("success"), json.dumps(result.get("error"), ensure_ascii=False)[:200] if not result.get("success") else "")
+        report(
+            "IMAP (Old) 获取成功",
+            result.get("success"),
+            json.dumps(result.get("error"), ensure_ascii=False)[:200] if not result.get("success") else "",
+        )
         if result.get("success"):
             emails = result.get("emails", [])
             report(f"获取到 {len(emails)} 封邮件", True)
@@ -280,7 +302,11 @@ def test_flask_e2e():
             # 调用邮件列表 API
             resp = client.get(f"/api/emails/{EMAIL}?folder=inbox&skip=0&top=5")
             data = resp.get_json() or {}
-            report(f"获取邮件 API 状态={resp.status_code}", resp.status_code == 200, json.dumps(data, ensure_ascii=False)[:200] if resp.status_code != 200 else "")
+            report(
+                f"获取邮件 API 状态={resp.status_code}",
+                resp.status_code == 200,
+                json.dumps(data, ensure_ascii=False)[:200] if resp.status_code != 200 else "",
+            )
 
             if data.get("success"):
                 method = data.get("method", "")
