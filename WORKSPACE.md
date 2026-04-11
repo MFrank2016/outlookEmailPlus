@@ -6,6 +6,115 @@
 
 ## 2026-04-11
 
+### 0w. 按用户要求执行全量回归 + 提交前文档对齐（本次会话）
+
+**时间**：2026-04-11
+
+**背景**：用户要求“先跑全量测试，若无问题准备本地提交”，并明确要求将本轮操作同步到文档。
+
+**本次实际动作**：
+
+1. 执行全量测试：
+   - 命令：`python -m unittest discover -s tests -v`
+   - 结果：`Ran 984 tests in 196.747s`，`OK (skipped=7)`。
+
+2. 工作区变更盘点（提交前）：
+   - 业务代码：`outlook_web/controllers/emails.py`、`outlook_web/services/{external_api.py,temp_mail_service.py,verification_extractor.py}`
+   - 测试：`tests/test_ai_fallback_trigger_condition.py`、`tests/test_external_api.py`、`tests/test_verification_ai_json_contract.py`、`tests/test_verification_extractor_options.py`、`tests/test_web_graph_auth_fallback.py`
+   - 文档：`WORKSPACE.md`、`docs/TODO/2026-04-10-验证码提取提速与AI增强TODO.md`
+
+3. 提交策略确认：
+   - 已与用户确认采用“两次提交”：
+     1) 代码 + 测试
+     2) 文档
+
+**结论**：
+
+1. 当前代码基线在全量回归下稳定可提交。
+2. 本条目用于锁定“先验证后提交”的操作证据，避免后续追溯缺失。
+
+### 0u. 手工排查补记：验证码返回“code+link”与性能慢的现场定位（本次会话）
+
+**时间**：2026-04-11
+
+**用户现场反馈**：
+
+1. Web 提取接口仍返回 `1181 + 链接`（期望 web 只返回 code）。
+2. 提取接口体感较慢。
+3. 要求基于当前真实数据直接调用接口验证，并将过程同步到文档。
+
+**本次实际排查动作**：
+
+1. 全量回归复核：
+   - 执行 `python -m unittest discover -s tests -v`
+   - 结果：`Ran 984 tests in 186.955s`，`OK (skipped=7)`。
+
+2. 真实数据直连接口验证（初次）：
+   - 账号样本：`SophiaClark1205@outlook.com`、`JessicaReynolds3096@outlook.com`
+   - `/api/emails/<email>/extract-verification` 返回 `verification_code=1181` 且 `verification_link` 非空。
+   - 单次耗时约 `5.7s`～`10.0s`。
+
+3. 关键根因定位（运行态而非代码逻辑）：
+   - 发现本机 **两个** `python web_outlook_app.py` 进程同时监听 `:5000`（PID `26524`、`46048`）。
+   - 这是典型“旧进程残留 + 新进程并存”场景，会导致请求命中旧代码版本，出现“看起来没生效”的现象。
+
+4. 修复与复测：
+   - 强制停止全部 `web_outlook_app.py` 进程后，只启动单实例（PID `45152`）。
+   - 复测同一账号：
+     - `verification_code=1181`
+     - `verification_link=None`
+     - `formatted=1181`
+   - 行为与“web 互斥（有 code 不返 link）”一致。
+   - 复测耗时约 `7.3s`（仍偏慢，但已排除“旧代码未生效”问题）。
+
+5. external 现场说明：
+   - 当前数据中 `external_api_key` 未配置（legacy_key_set=false，multi_keys=0），
+     因此本轮先完成 web 真实链路验证；external 需先配置 key 才能做同口径实测。
+
+**当前结论**：
+
+1. “web 仍返回 code+link”并非新逻辑无效，根因是本地双进程监听同端口导致命中旧实例。
+2. 单实例重启后，web 互斥行为已按预期生效。
+3. 体感慢主要仍在上游读取链路（Graph/IMAP 回退），不是本次互斥收口逻辑造成。
+
+### 0v. 本地镜像构建与容器实测（本次会话）
+
+**时间**：2026-04-11
+
+**背景**：用户要求本地构建镜像并进行容器化验证。
+
+**本次实际操作**：
+
+1. Docker 运行态检查：
+   - 初始 `docker version` 无法连接 daemon；经用户手动拉起 Docker Desktop 后恢复正常。
+
+2. 本地镜像构建：
+   - 命令：`docker build -t outlook-email-plus:local-20260411 .`
+   - 结果：构建成功，镜像 ID `8d84bb870e21`，大小约 `170MB`。
+
+3. 容器首跑问题与修复：
+   - 首次 `docker run` 启动失败，日志报 `sqlite3.OperationalError: disk I/O error`。
+   - 根因：宿主机本地进程占用同一 `data/outlook_accounts.db` 挂载文件。
+   - 处理：停止宿主机 `web_outlook_app.py` 进程后重启容器。
+
+4. 容器成功启动与功能实测：
+   - 容器名：`outlook-email-plus-local-test`
+   - 端口映射：`5002 -> 5000`
+   - 状态：`Up (healthy)`
+   - `/healthz`：200
+   - 登录：200
+   - 真实账号提取接口复测：
+     - `GET /api/emails/SophiaClark1205@outlook.com/extract-verification?code_source=all`
+     - 返回：`code=1181, link=None, formatted=1181`
+     - 耗时：约 `9.97s`
+
+**结论**：
+
+1. 本地镜像可成功构建并正常容器化运行。
+2. 容器内行为与当前代码一致（web 互斥生效：有 code 不返 link）。
+3. 耗时仍主要受上游读取链路影响，未见镜像化引入额外语义偏差。
+
+
 ### 0t. AI fallback 触发条件收紧：方案 A（任一 high 即跳过 AI）
 
 **时间**：2026-04-11
