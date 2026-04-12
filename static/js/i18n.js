@@ -202,11 +202,12 @@
         '（接收推送的用户/群组 ID）': '(user/group ID that receives notifications)',
         '（从 @BotFather 获取）': '(get it from @BotFather)',
         '🔄 Token 刷新设置': '🔄 Token Refresh Settings',
+        // ── 设置页：AI 增强配置（含无空格变体，兼容紧凑书写）──
         '基础设置': 'Basic Settings',
         '⚙️ 基础设置': '⚙️ Basic Settings',
         '验证码AI增强': 'Verification Code AI Enhancement',
         '🤖 验证码 AI 增强': '🤖 Verification Code AI Enhancement',
-        '启用验证码AI增强（系统级)': 'Enable Verification Code AI Enhancement (System-level)',
+        '启用验证码AI增强（系统级）': 'Enable Verification Code AI Enhancement (System-level)',
         '启用验证码 AI 增强（系统级）': 'Enable Verification Code AI Enhancement (System-level)',
         '规则提取优先；仅在规则不足时触发AI回退。': 'Rule extraction first; trigger AI fallback only when rules are insufficient.',
         '规则提取优先；仅在规则不足时触发 AI 回退。': 'Rule extraction first; trigger AI fallback only when rules are insufficient.',
@@ -294,6 +295,7 @@
         // ── 设置页：临时邮箱配置区 ──
         '⚡ 临时邮箱配置': '⚡ Temp Mailbox Configuration',
         '全局临时邮箱 Provider': 'Global Temp Mailbox Provider',
+        // Provider 下拉选项描述（自建服务 / CF Worker）
         '自建域名临时邮箱服务': 'Self-hosted custom-domain temp mailbox service',
         'CF Worker 部署的临时邮箱': 'Temp mailbox powered by CF Worker deployment',
         '决定 external API 和其他未明确指定 provider 的操作所使用的来源。生成邮箱时可在前端独立选择。': 'Determines the provider used by external API calls and other operations without a specified provider. Can be independently selected when creating a mailbox.',
@@ -312,6 +314,7 @@
         'CF Worker Admin 密码': 'CF Worker Admin Password',
         '对应 CF Worker 环境变量 ADMIN_PASSWORDS 中的密码值。': 'Password value from the CF Worker ADMIN_PASSWORDS environment variable.',
         '☁ 从 CF Worker 同步域名': '☁ Sync Domains from CF Worker',
+        // 同步按钮提示（两种措辞变体）+ 只读域名字段标签
         '自动读取 CF Worker 的域名配置，同步至下方域名字段。': 'Automatically read CF Worker domain configuration and sync to the domain fields below.',
         '自动读取 CF Worker 的域名配置，同步至下方「临时邮箱可用域名」和「默认域名」。': 'Automatically read the CF Worker domain configuration and sync to the "Available Domains" and "Default Domain" fields below.',
         '可用域名（只读 · 通过同步按钮更新）': 'Available domains (read-only · updated via sync button)',
