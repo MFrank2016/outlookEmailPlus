@@ -8,6 +8,38 @@
 
 ### 操作记录
 
+#### 39. 补齐 v1.16.0 标签镜像（重打 tag 到 CI 全绿提交）
+
+**时间**：2026-04-13
+
+**本次操作**：
+
+1. 处理策略
+   - 采用“重打同名 tag”的方式补齐 `v1.16.0` 版本镜像
+   - 将 `v1.16.0` 从旧目标提交（`a7d1fb1`）迁移到 CI 全绿提交（`5d1f424`）
+
+2. 执行步骤
+   - 本地重置 tag：`git tag -fa v1.16.0 5d1f424 -m "v1.16.0 (retag for CI-green image publish)"`
+   - 删除远端旧 tag：`git push origin :refs/tags/v1.16.0`
+   - 推送新 tag：`git push origin v1.16.0`
+
+3. 流水线结果
+   - `Create GitHub Release`（run `24334384448`）✅ success
+   - `Build and Push Docker Image`（run `24334384479`）✅ success
+   - 产物镜像 digest（workflow 输出）：
+     - `sha256:12e1fb01bf8d20e6c5aae4f3e89a0c34b335759d971f9e06363882b971c027d5`
+
+4. digest 核对
+   - GHCR `v1.16.0` / `v1.16.0-5d1f424` digest：
+     - `sha256:12e1fb01bf8d20e6c5aae4f3e89a0c34b335759d971f9e06363882b971c027d5`
+   - DockerHub `v1.16.0` / `v1.16.0-5d1f424` digest：
+     - `sha256:12e1fb01bf8d20e6c5aae4f3e89a0c34b335759d971f9e06363882b971c027d5`
+
+5. 结论
+   - `v1.16.0` 标签镜像已补齐且 GHCR / DockerHub digest 一致 ✅
+
+---
+
 #### 38. 核对 GHCR / DockerHub 镜像 digest 一致性
 
 **时间**：2026-04-13
