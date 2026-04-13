@@ -8,6 +8,33 @@
 
 ### 操作记录
 
+#### 38. 核对 GHCR / DockerHub 镜像 digest 一致性
+
+**时间**：2026-04-13
+
+**本次操作**：
+
+1. 核对镜像标签可用性
+   - `v1.16.0` 标签当前在 GHCR / DockerHub 均不存在（原因：该次 tag workflow 曾被 quality-gate 阻断）
+
+2. 核对已成功推送的 main 链路镜像
+   - 参考成功 workflow：`Build and Push Docker Image`（run `24333634813`）
+   - 对比标签：`main`、`latest`、`main-5d1f424`
+
+3. digest 对比结果
+   - GHCR `main` digest：`sha256:1593096c384fc8b5dbec68045e18aebea0ec243893bb3cb398fb98b17429ad1c`
+   - GHCR `latest` digest：`sha256:1593096c384fc8b5dbec68045e18aebea0ec243893bb3cb398fb98b17429ad1c`
+   - GHCR `main-5d1f424` digest：`sha256:1593096c384fc8b5dbec68045e18aebea0ec243893bb3cb398fb98b17429ad1c`
+   - DockerHub `main` digest：`sha256:1593096c384fc8b5dbec68045e18aebea0ec243893bb3cb398fb98b17429ad1c`
+   - DockerHub `latest` digest：`sha256:1593096c384fc8b5dbec68045e18aebea0ec243893bb3cb398fb98b17429ad1c`
+   - DockerHub `main-5d1f424` digest：`sha256:1593096c384fc8b5dbec68045e18aebea0ec243893bb3cb398fb98b17429ad1c`
+
+4. 结论
+   - GHCR 与 DockerHub 的 main 系列镜像 digest 完全一致 ✅
+   - 如需补齐 `v1.16.0` 版本镜像标签，需要在质量门禁通过后重新触发 tag 构建链路。
+
+---
+
 #### 37. 修正 v1.16.0 Release 文案口径（产物状态）
 
 **时间**：2026-04-13
