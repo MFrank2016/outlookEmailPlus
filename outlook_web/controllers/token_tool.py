@@ -1,3 +1,18 @@
+"""OAuth Token 获取工具 — 控制器层
+
+编排 OAuth 授权流程、Token 换取、账号写入等业务操作。
+被 routes/token_tool.py 的 Blueprint 路由直接调用。
+
+业务背景:
+  - PRD: docs/PRD/2026-04-12-OAuth-Token获取工具PRD.md (v1.3)
+  - 收口范围: "兼容账号导入模式" — tenant 固定 consumers, 禁用 client_secret
+
+设计决策 (FD v1.0 §收口说明):
+  - prepare / config / save 接口均拒绝不兼容输入 (client_secret / 非 consumers tenant)
+  - save_to_account 使用 test_refresh_token_with_rotation 验证后再写入
+  - 回调页 (popup_result.html) 不直接换取 token, 统一走手动粘贴 exchange 接口
+"""
+
 from __future__ import annotations
 
 from typing import Any
@@ -14,17 +29,20 @@ from outlook_web.security.auth import login_required
 from outlook_web.services import graph as graph_service
 from outlook_web.services import oauth_tool as oauth_tool_service
 
+# 兼容模式常量 — 当前仅支持个人 Microsoft 账号导入 (FD 收口说明)
 COMPATIBLE_TENANT = "consumers"
 LEGACY_GRAPH_SCOPE = "offline_access https://graph.microsoft.com/.default"
 COMPATIBLE_SCOPE = app_config.get_oauth_scope_default()
 
 
 def _ensure_oauth_tool_enabled() -> None:
+    """功能开关守卫: OAUTH_TOOL_ENABLED=false 时返回 404 (PRD §2.8)"""
     if not app_config.get_oauth_tool_enabled():
         abort(404)
 
 
 def _compatibility_mode_error(client_secret: str, tenant: str) -> str | None:
+    """兼容模式校验: 拒绝 client_secret 和非 consumers tenant (FD 收口说明)"""
     normalized_tenant = (tenant or COMPATIBLE_TENANT).strip() or COMPATIBLE_TENANT
     if client_secret:
         return "兼容账号导入模式不支持 Client Secret，请使用公共客户端并保持 Client Secret 为空"
@@ -34,6 +52,7 @@ def _compatibility_mode_error(client_secret: str, tenant: str) -> str | None:
 
 
 def _save_validation_guidance(error_msg: str) -> str | None:
+    """针对特定 Azure 错误码返回修复指引 (AADSTS9002331 — 仅个人账号与 /common 冲突)"""
     detail = (error_msg or "").lower()
     if "aadsts9002331" in detail or "/consumers endpoint" in detail:
         return "当前 Azure 应用被配置为仅 Personal Microsoft accounts，这会与系统现有的 /common 验证与运行模型冲突。请将 Supported account types 改为“Accounts in any identity provider or organizational directory and personal Microsoft accounts”。"
@@ -141,6 +160,7 @@ def exchange_token() -> Any:
             "OAUTH_CODE_PARSE_FAILED", "URL 中未包含 state 参数", status=400
         )
 
+    # 双层 state 校验 (FD §5.3): Session cookie 防 CSRF + 内存 Store 携带 PKCE verifier
     session_state = session.get("oauth_state")
     if not session_state or session_state != state:
         return build_error_response(
@@ -157,6 +177,7 @@ def exchange_token() -> Any:
             status=400,
         )
 
+    # 换取成功后立即清除 flow 数据,防止授权码重放攻击
     token_data, error_info = oauth_tool_service.exchange_code_for_tokens(
         code=code,
         oauth_config={

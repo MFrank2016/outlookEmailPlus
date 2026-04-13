@@ -1,3 +1,11 @@
+"""OAuth Token 获取工具 — 路由层
+
+独立 Blueprint,通过 OAUTH_TOOL_ENABLED 环境变量条件注册 (app.py)。
+纯路由映射,不包含业务逻辑 (分层约束: Routes 禁止导入 services)。
+
+业务背景: PRD docs/PRD/2026-04-12-OAuth-Token获取工具PRD.md (v1.3)
+"""
+
 from __future__ import annotations
 
 from flask import Blueprint
@@ -6,7 +14,11 @@ from outlook_web.controllers import token_tool as token_tool_controller
 
 
 def create_blueprint() -> Blueprint:
-    """创建 token_tool Blueprint"""
+    """创建 token_tool Blueprint (FD §7.1)
+
+    注意: /token-tool/callback 无 @login_required —
+    它运行在 OAuth 弹窗中无法携带 Session; 安全校验通过 controller 层的 state 参数完成。
+    """
     bp = Blueprint("token_tool", __name__)
 
     bp.add_url_rule(

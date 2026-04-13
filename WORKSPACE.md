@@ -8,6 +8,42 @@
 
 ### 操作记录
 
+#### 30. OAuth Token 服务层修复 + main 全量回归验证
+
+**时间**：2026-04-13
+
+**本次操作**：
+
+1. 检查 main 分支待提交内容
+   - 发现 3 个业务文件改动：
+     - `outlook_web/controllers/token_tool.py`
+     - `outlook_web/routes/token_tool.py`
+     - `outlook_web/services/oauth_tool.py`
+
+2. 修复 `oauth_tool.py` 的语法问题
+   - 问题：`get_oauth_flow()` 在 `with OAUTH_FLOW_LOCK:` 后缺少函数体，触发 `IndentationError`
+   - 修复：补回逻辑：
+     - `_prune_expired()`
+     - `data = OAUTH_FLOW_STORE.get(state)`
+     - `return dict(data) if data else None`
+   - `py_compile` 语法检查通过：
+     - `outlook_web/services/oauth_tool.py`
+     - `outlook_web/controllers/token_tool.py`
+     - `outlook_web/routes/token_tool.py`
+
+3. main 分支全量回归测试（后台独立进程）
+   - 启动方式：`Start-Process`（非前台阻塞）
+   - 命令：`python -m pytest tests/ -q`
+   - 结果：**1109 passed, 9 skipped** ✅
+   - 耗时：327.27s
+   - 备注：外层工具 300s 超时中断，但后台 pytest 实际已完成；以日志最终结果为准
+
+4. 提交策略
+   - 按用户确认：3 个业务文件采用**单个本地提交**
+   - 同步更新 WORKSPACE 记录本次操作
+
+---
+
 #### 29. dev → main 合并 + 全量测试验证
 
 **时间**：2026-04-13

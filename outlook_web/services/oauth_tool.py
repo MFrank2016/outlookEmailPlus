@@ -1,3 +1,19 @@
+"""OAuth Token 获取工具 — 服务层
+
+提供 PKCE 生成、授权 URL 构建、授权码换取 Token、Scope 校验等核心逻辑。
+为 controllers/token_tool.py 提供无 Flask 依赖的纯业务服务。
+
+业务背景:
+  - PRD: docs/PRD/2026-04-12-OAuth-Token获取工具PRD.md (v1.3)
+  - Issue: #38, #34, #26, #20, #18
+
+设计决策:
+  - FD: docs/FD/2026-04-12-OAuth-Token获取工具FD.md
+  - 内存存储 OAUTH_FLOW_STORE: 单进程安全,20 分钟 TTL 自动清理;
+    Docker 部署需 workers=1 (与现有 gunicorn 配置一致)
+  - PKCE 强制 S256: 公共客户端安全最佳实践,不依赖 client_secret
+"""
+
 from __future__ import annotations
 
 import base64
@@ -13,16 +29,26 @@ import requests
 
 logger = logging.getLogger(__name__)
 
-# ---- OAUTH_FLOW_STORE（模块级内存存储） ----
+# OAUTH_FLOW_STORE — 模块级内存存储,保存 OAuth 授权流程的中间状态
+# 线程安全 (Lock) + 自动过期 (20 分钟 TTL)
+# 设计权衡 (FD §5.2): 单进程内安全,多实例部署需迁移 Redis; 当前 Docker workers=1 约束下够用
 OAUTH_FLOW_STORE: Dict[str, Dict[str, Any]] = {}
 OAUTH_FLOW_LOCK = Lock()
-OAUTH_FLOW_TTL = 20 * 60  # 20 分钟
+OAUTH_FLOW_TTL = 20 * 60  # 20 分钟 (PRD §5.1 Flow TTL)
 
 
 def _prune_expired() -> None:
-    """清理过期的 flow 条目（必须在 LOCK 内调用）"""
+    """清理过期的 flow 条目（必须在 LOCK 内调用）
+
+    惰性清理策略: 每次读写操作触发,而非后台定时线程;
+    权衡: 避免额外线程复杂度,OAUTH_FLOW_STORE 条目量极小 (用户交互式操作)
+    """
     now = time.time()
-    expired = [k for k, v in OAUTH_FLOW_STORE.items() if now - v.get("created_at", 0) > OAUTH_FLOW_TTL]
+    expired = [
+        k
+        for k, v in OAUTH_FLOW_STORE.items()
+        if now - v.get("created_at", 0) > OAUTH_FLOW_TTL
+    ]
     for k in expired:
         del OAUTH_FLOW_STORE[k]
     if expired:
@@ -36,6 +62,7 @@ def store_oauth_flow(state: str, flow_data: Dict[str, Any]) -> None:
 
 
 def get_oauth_flow(state: str) -> Optional[Dict[str, Any]]:
+    # 返回浅拷贝,防止调用方意外修改 Store 内部状态
     with OAUTH_FLOW_LOCK:
         _prune_expired()
         data = OAUTH_FLOW_STORE.get(state)
@@ -48,7 +75,11 @@ def discard_oauth_flow(state: str) -> None:
 
 
 def generate_pkce() -> Tuple[str, str]:
-    """生成 PKCE code_verifier + code_challenge (S256)"""
+    """生成 PKCE code_verifier + code_challenge (S256)
+
+    RFC 7636 规范实现。verifier 仅存在于服务端内存 (OAUTH_FLOW_STORE),
+    不出现在 URL 或 Cookie 中,防止授权码拦截攻击。
+    """
     verifier = secrets.token_urlsafe(64)
     digest = hashlib.sha256(verifier.encode()).digest()
     challenge = base64.urlsafe_b64encode(digest).rstrip(b"=").decode()
@@ -140,7 +171,9 @@ def exchange_code_for_tokens(
 
     tokens = resp.json()
     result = _extract_token_data(tokens, oauth_config)
-    logger.info("[oauth_tool] Token 换取成功 (client_id=%s...)", oauth_config["client_id"][:8])
+    logger.info(
+        "[oauth_tool] Token 换取成功 (client_id=%s...)", oauth_config["client_id"][:8]
+    )
     return result, None
 
 
@@ -151,6 +184,11 @@ def validate_scope(scope_value: str) -> Tuple[str, Optional[str]]:
     """
     校验并标准化 scope
 
+    业务规则 (PRD §2.3 / FD §5.5):
+    - 至少需要一个 API scope (OIDC scope 如 offline_access 不算)
+    - .default scope 与命名 scope 不可混用 (Microsoft 限制)
+    - 一次请求只能对应一个资源 (如 Graph 与 IMAP 不可同时请求)
+
     Returns:
         (normalized_scope, None)       — 合法
         (scope_value, error_message)   — 不合法
@@ -160,7 +198,10 @@ def validate_scope(scope_value: str) -> Tuple[str, Optional[str]]:
     api_scopes = [s for s in scopes if s not in OIDC_SCOPES]
 
     if not api_scopes:
-        return normalized, "至少需要一个 API scope（如 https://graph.microsoft.com/.default）"
+        return (
+            normalized,
+            "至少需要一个 API scope（如 https://graph.microsoft.com/.default）",
+        )
 
     has_default = any(s.endswith("/.default") for s in api_scopes)
     has_named = any(not s.endswith("/.default") for s in api_scopes)
@@ -190,6 +231,8 @@ def _scope_resource(scope: str) -> Optional[str]:
     return None
 
 
+# PRD §2.7: 常见错误中文引导映射 — 将 Microsoft OAuth 错误码转为用户可操作的排查建议
+# 键名匹配 error_description 中的子串 (不区分大小写)
 ERROR_GUIDANCE_MAP = {
     "unauthorized_client": "请到 Azure 门户确认应用注册已支持个人 Microsoft 账号（Supported account types 必须包含 Personal Microsoft accounts / consumers），并在『身份验证 → 高级设置』中开启『允许公共客户端流』",
     "invalid_grant": "授权码已过期或已使用，请重新点击『登录 Microsoft』",
@@ -212,7 +255,11 @@ def map_error_guidance(error_detail: str) -> str:
 
 
 def decode_jwt_payload(token: str) -> Optional[dict]:
-    """不验签解码 JWT payload（纯展示用途）"""
+    """不验签解码 JWT payload（纯展示用途）
+
+    从 access_token 中提取 audience / scp / roles 等诊断信息,
+    帮助用户确认实际授权范围。不需要签名验证,因为仅用于页面展示。
+    """
     import json as json_mod
 
     try:
