@@ -282,6 +282,82 @@
     padding-left: 26px;
 }
 
+/* 新手指引 */
+.guide-body {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    padding-top: 14px;
+}
+
+.guide-step {
+    display: flex;
+    gap: 12px;
+    align-items: flex-start;
+}
+
+.guide-step-num {
+    flex-shrink: 0;
+    width: 28px;
+    height: 28px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    background: var(--clr-primary);
+    color: #fff;
+    font-size: 0.8rem;
+    font-weight: 700;
+    margin-top: 2px;
+}
+
+.guide-step-content {
+    flex: 1;
+    min-width: 0;
+}
+
+.guide-step-content p {
+    margin: 6px 0 2px;
+    line-height: 1.6;
+    font-size: 0.86rem;
+}
+
+.guide-step-content ul {
+    margin: 4px 0 4px 18px;
+    padding: 0;
+    font-size: 0.84rem;
+    line-height: 1.7;
+}
+
+.guide-step-content code {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-light);
+    border-radius: 3px;
+    padding: 1px 5px;
+    font-size: 0.82rem;
+}
+
+.guide-links {
+    margin-top: 8px;
+    padding-top: 12px;
+    border-top: 1px solid var(--border-light);
+    font-size: 0.84rem;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+}
+
+.guide-links a {
+    color: var(--clr-primary);
+}
+
+.guide-links a + a::before {
+    content: "|";
+    color: var(--text-muted);
+    margin-right: 8px;
+}
+
 @media (max-width: 720px) {
     .token-tool-shell {
         width: calc(100vw - 20px);

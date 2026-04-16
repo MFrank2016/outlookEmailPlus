@@ -50,9 +50,10 @@ OutlookMail Plus 是一款面向个人与团队的注册邮箱管理器。
 - Azure 应用注册的 **Supported account types** 应选择 **Accounts in any identity provider or organizational directory and personal Microsoft accounts**；仅组织目录会报 `unauthorized_client`，而 **Personal Microsoft accounts only** 会在写入前 `/common` 验证阶段报 `AADSTS9002331`
 - 如果 Azure 门户在切换 Supported account types 时提示 `Property api.requestedAccessTokenVersion is invalid`，请到 **Manifest** 中把 `api.requestedAccessTokenVersion` 改为 `2`
 - 如果已经开启 Public Client 仍然报“必须包含 `client_secret`”，说明当前回调仍被 Azure 视为机密 Web 客户端；此时应改用 **Mobile and desktop applications** 平台的 public redirect（如 `http://localhost`），并在工具里走手动粘贴回调 URL
-- 如果读取邮件时 IMAP 报 `AADSTS70000` / scope 未授权，优先检查当前工具里是否还残留旧的 Graph 默认 Scope；兼容导入模式应改回 **IMAP 预设** 并重新授权
-- Azure API permissions 至少应补：**Office 365 Exchange Online → IMAP.AccessAsUser.All**；如果还希望 Graph 拉取链路生效，再补：**Microsoft Graph → Mail.Read**
-- 支持 Graph / IMAP Scope 预设、错误引导、JWT audience/scope 诊断，并默认推荐 IMAP 兼容 Scope
+- 如果遇到 `AADSTS70000`（scope 未授权/失效），优先检查“授权时 scope”和“验证时 scope”是否一致，并重新执行一次 **强制 Consent** 授权
+- Graph 场景建议最小权限：**offline_access + Mail.Read + User.Read**；如需 IMAP 再额外补 **Office 365 Exchange Online → IMAP.AccessAsUser.All**
+- 支持 Graph / IMAP Scope 预设、错误引导、JWT audience/scope 诊断；前端默认推荐 **Graph 邮件预设**（后端环境变量 fallback 保持 IMAP 兼容 Scope）
+- 页面内置 Azure 应用注册快速指引折叠卡片（5 步）与教程入口：<https://real-caption-6d1.notion.site/OutlooKMailplus-token-344463aed7e680099380dc324ecdf1c9?source=copy_link>
 - 支持一键写入已有 Outlook 账号或创建新账号，写入前自动验证 refresh token，并拒绝不兼容配置
 
 **一键更新**
@@ -247,7 +248,7 @@ python -m unittest discover -s tests -v
 - `OAUTH_REDIRECT_URI`
   Outlook OAuth 回调地址
 - `OAUTH_SCOPE`
-  Token 工具默认 Scope，默认 `offline_access https://outlook.office.com/IMAP.AccessAsUser.All`
+  后端环境变量默认 Scope（fallback），默认 `offline_access https://outlook.office.com/IMAP.AccessAsUser.All`；前端首次展示默认 Graph 预设
 - `OAUTH_TENANT`
   Token 工具默认 Tenant，固定兼容模式 `consumers`
 - `GPTMAIL_BASE_URL`

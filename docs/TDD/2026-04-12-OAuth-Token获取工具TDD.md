@@ -1,8 +1,8 @@
 # TDD: OAuth Token 获取工具
 
-- 文档版本: v1.1
+- 文档版本: v1.2
 - 创建日期: 2026-04-12
-- 更新日期: 2026-04-12（v1.1 — 第二次文档联调修正：§9 用例总数修正 47→57、A-LIST-01 字段修正）
+- 更新日期: 2026-04-16（v1.2 — 前端引导与 Scope 默认口径同步、会话回归结果回填）
 - 文档类型: 测试设计文档（TDD）
 - 关联 PRD: `docs/PRD/2026-04-12-OAuth-Token获取工具PRD.md`
 - 关联 FD: `docs/FD/2026-04-12-OAuth-Token获取工具FD.md`
@@ -14,11 +14,12 @@
 > 当前自动化测试已按兼容账号导入模式调整：
 > - 配置接口返回固定空 `client_secret` 与 `tenant=consumers`
 > - `prepare / config / save` 需覆盖拒绝非空 `client_secret` 与非 `consumers` tenant 的场景
-> - 默认 Scope 断言改为 IMAP 兼容预设
+> - 后端配置默认 Scope 断言为 IMAP 兼容预设；前端首次展示默认 Graph 预设
 > - 当前本地专项回归基线已扩展为 `64` 条用例
 > - `unauthorized_client` 的引导应明确提示“应用必须支持个人 Microsoft 账号 + 开启公共客户端流”
 > - `AADSTS9002331` 的引导应明确提示：不要使用 `PersonalMicrosoftAccount`，而应切到 `AzureADandPersonalMicrosoftAccount`
 > - 若文档涉及 Azure 门户切换 Supported account types，应补充 `api.requestedAccessTokenVersion = 2` 的前置约束
+> - 2026-04-16 前端已加入新手引导折叠记忆（`token_tool_guide_dismissed`）与教程链接扩展位（`GUIDE_TUTORIAL_LINKS`）
 >
 > 文中早前关于 `client_secret` 加密存储回传、可变 tenant、tenant-aware / client-secret-aware 保存验证的测试设计，均属于历史口径，不再作为当前测试基线。
 

@@ -2,12 +2,19 @@
 
 const t = window.translateAppText || ((text) => text);
 
+// ===== 新手指引配置 =====
+// 教程链接列表 — 在此维护外部教程链接，HTML 中 guide-links 区域会自动渲染
+const GUIDE_TUTORIAL_LINKS = [
+    // { title: '标题', url: 'https://example.com/tutorial' },
+    // 在此添加教程链接...
+];
+
 const CSRF_TOKEN = document.querySelector('meta[name="csrf-token"]')?.content || '';
 const SCOPE_PRESETS = {
     graph: ['offline_access', 'https://graph.microsoft.com/.default'],
     imap: ['offline_access', 'https://outlook.office.com/IMAP.AccessAsUser.All'],
 };
-const DEFAULT_COMPAT_SCOPE = SCOPE_PRESETS.imap.join(' ');
+const DEFAULT_COMPAT_SCOPE = SCOPE_PRESETS.graph.join(' ');
 
 let scopeTokens = ['offline_access', 'https://graph.microsoft.com/.default'];
 let currentTokenResult = null;
@@ -459,8 +466,33 @@ async function confirmSaveToAccount() {
 document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('scopeChips')?.addEventListener('click', handleScopeChipClick);
     document.getElementById('redirectUri').value = buildDefaultRedirectUri();
-    renderScopeChips(DEFAULT_COMPAT_SCOPE);
+    renderScopeChips(SCOPE_PRESETS.graph.join(' '));
     loadOAuthConfig();
     toggleSaveMode();
     handleTenantChange();
+
+    // 指引折叠状态记忆
+    const guideCard = document.getElementById('guide-card');
+    if (guideCard) {
+        const guideDismissed = localStorage.getItem('token_tool_guide_dismissed');
+        if (guideDismissed === 'true') {
+            guideCard.removeAttribute('open');
+        }
+        guideCard.addEventListener('toggle', () => {
+            localStorage.setItem('token_tool_guide_dismissed', guideCard.open ? '' : 'true');
+        });
+    }
+
+    // 自动渲染教程链接到 guide-links 区域
+    const guideLinksContainer = document.querySelector('.guide-links');
+    if (guideLinksContainer && GUIDE_TUTORIAL_LINKS.length > 0) {
+        GUIDE_TUTORIAL_LINKS.forEach((link) => {
+            const a = document.createElement('a');
+            a.href = link.url;
+            a.target = '_blank';
+            a.rel = 'noopener';
+            a.textContent = link.title;
+            guideLinksContainer.appendChild(a);
+        });
+    }
 });

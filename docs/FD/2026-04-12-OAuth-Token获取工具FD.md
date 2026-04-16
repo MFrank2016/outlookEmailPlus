@@ -1,7 +1,8 @@
 # FD: OAuth Token 获取工具
 
-- 文档版本: v1.0
+- 文档版本: v1.1
 - 创建日期: 2026-04-12
+- 更新日期: 2026-04-16（v1.1 — 新手指引落地回填 + Graph 推荐口径同步）
 - 关联 PRD: `docs/PRD/2026-04-12-OAuth-Token获取工具PRD.md`
 - 关联 TD: `docs/TD/2026-04-12-OAuth-Token获取工具TD.md`
 - 当前范围: 功能设计,定义系统行为、接口契约、数据流、前后端交互
@@ -11,10 +12,11 @@
 > 当前功能设计已收敛为“兼容账号导入模式”：
 > - Tenant 固定 `consumers`
 > - `client_secret` 禁用且不参与流程
-> - 默认推荐 IMAP 兼容 Scope
+> - 前端默认推荐 Graph Scope（系统邮件读取主链路）；后端环境变量 fallback 保持 IMAP 兼容 Scope
 > - `prepare / config / save` 接口均需拒绝不兼容输入
 > - Azure 应用注册应使用 **Accounts in any identity provider or organizational directory and personal Microsoft accounts**；仅组织目录应用会命中 `unauthorized_client`，仅个人账号应用会在当前 `/common` 验证链路中命中 `AADSTS9002331`
 > - 若门户修改受支持账户类型时报 `api.requestedAccessTokenVersion is invalid`，应先在 Manifest 中将 `api.requestedAccessTokenVersion` 设为 `2`
+> - 2026-04-16 已实现：`guide-card`（HTML 原生 details）+ 本地折叠状态记忆 + 教程链接占位
 >
 > 下文若仍出现可变 tenant、可选 `client_secret` 或机密客户端场景描述，均视为历史方案背景，不再代表当前实现契约。
 
@@ -659,6 +661,7 @@ def validate_scope(scope_value):
 ```python
 ERROR_GUIDANCE_MAP = {
     "unauthorized_client": "请到 Azure 门户 → 身份验证 → 高级设置 → 开启『允许公共客户端流』",
+    "aadsts70000": "请求 scope 未授权或已失效。请确认 Graph 权限（offline_access/Mail.Read/User.Read）已添加，并使用强制 Consent 重新授权后再写入",
     "invalid_grant": "授权码已过期或已使用,请重新点击『登录 Microsoft』",
     "invalid_scope": "请到 Azure 门户 → API 权限 → 添加对应的 Microsoft Graph 委托权限",
     "redirect_uri_mismatch": "回调地址不匹配,请确认 Azure 门户中注册的重定向 URI 与当前填写的一致",
@@ -692,7 +695,7 @@ def map_error_guidance(error_detail):
 </head>
 <body>
   <!-- 快速指引卡片（可折叠） -->
-  <section id="guide-card">...</section>
+  <details id="guide-card" open>...</details>
   
   <!-- OAuth 配置表单 -->
   <section id="config-form">...</section>
@@ -722,7 +725,8 @@ def map_error_guidance(error_detail):
 │  │ 步骤1: 注册应用 [Azure 门户→]               │   │
 │  │ 步骤2: 开启公共客户端 ⚠️ 最易遗漏           │   │
 │  │ 步骤3: 配置 API 权限                        │   │
-│  │ 步骤4: 获取 Client ID                       │   │
+│  │ 步骤4: 配置重定向 URI                       │   │
+│  │ 步骤5: 获取 Client ID                       │   │
 │  └─────────────────────────────────────────────┘   │
 ├─────────────────────────────────────────────────────┤
 │  ① OAuth 配置                                       │
@@ -928,7 +932,7 @@ def inject_app_version():
 | `OAUTH_CLIENT_ID` | 空 | 默认 Client ID |
 | `OAUTH_CLIENT_SECRET` | 空 | 默认 Client Secret |
 | `OAUTH_REDIRECT_URI` | 空（自动检测） | 默认 Redirect URI |
-| `OAUTH_SCOPE` | `offline_access https://graph.microsoft.com/.default` | 默认 Scope |
+| `OAUTH_SCOPE` | `offline_access https://outlook.office.com/IMAP.AccessAsUser.All` | 后端环境变量默认 Scope（兼容 fallback） |
 | `OAUTH_TENANT` | `consumers` | 默认 Tenant |
 
 ---

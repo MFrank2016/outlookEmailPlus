@@ -45,8 +45,10 @@ Highlights include:
 - The supported contract is now fixed to personal Microsoft accounts: Public Client, `tenant=consumers`, and no `client_secret`
 - The Azure app registration should use **Accounts in any identity provider or organizational directory and personal Microsoft accounts**; org-only apps fail with `unauthorized_client`, while **Personal Microsoft accounts only** conflicts with the current `/common` validation/runtime model and can fail with `AADSTS9002331`
 - If Azure blocks the audience change with `Property api.requestedAccessTokenVersion is invalid`, update `api.requestedAccessTokenVersion` to `2` in the **Manifest** first
-- For actual mailbox fetching, Azure API permissions should include **Office 365 Exchange Online → IMAP.AccessAsUser.All**; if you also want the Graph path to work, add **Microsoft Graph → Mail.Read**
-- Supports Graph / IMAP scope presets, error guidance, and JWT audience/scope diagnostics, with IMAP compatibility scope recommended by default
+- If you hit `AADSTS70000` (unauthorized/expired scope), first verify that the scope used during consent matches the scope used during validation, then run a fresh **forced-consent** authorization
+- Recommended minimum Graph delegated permissions: **offline_access + Mail.Read + User.Read**; add **Office 365 Exchange Online → IMAP.AccessAsUser.All** only when IMAP is required
+- Supports Graph / IMAP scope presets, error guidance, and JWT audience/scope diagnostics; the frontend now recommends the **Graph mail preset** by default (backend env fallback remains IMAP-compatible)
+- Built-in Azure quick-start guide card (5 steps) and tutorial link: <https://real-caption-6d1.notion.site/OutlooKMailplus-token-344463aed7e680099380dc324ecdf1c9?source=copy_link>
 - Supports writing refresh tokens into existing Outlook accounts or creating new accounts after validation, while rejecting incompatible configurations
 
 **One-Click Update**
@@ -239,7 +241,7 @@ python -m unittest discover -s tests -v
 - `OAUTH_REDIRECT_URI`
   Outlook OAuth callback URL
 - `OAUTH_SCOPE`
-  Default scope for the token tool, default `offline_access https://outlook.office.com/IMAP.AccessAsUser.All`
+  Backend environment default scope (fallback): `offline_access https://outlook.office.com/IMAP.AccessAsUser.All`; frontend first-render default uses Graph preset
 - `OAUTH_TENANT`
   Default tenant for the token tool, fixed to compatibility-mode `consumers`
 - `GPTMAIL_BASE_URL`

@@ -1,11 +1,11 @@
 # TODO: OAuth Token 获取工具
 
 > 创建日期：2026-04-12
-> **更新日期：2026-04-12（v1.1 — 第二次文档联调修正）**
-> 基于 PRD v1.3：`docs/PRD/2026-04-12-OAuth-Token获取工具PRD.md`
-> 基于 FD v1.0：`docs/FD/2026-04-12-OAuth-Token获取工具FD.md`
-> 基于 TD v1.3：`docs/TD/2026-04-12-OAuth-Token获取工具TD.md`
-> 基于 TDD v1.1：`docs/TDD/2026-04-12-OAuth-Token获取工具TDD.md`
+> **更新日期：2026-04-16（v1.2 — 新手指引落地与会话回归回填）**
+> 基于 PRD v1.4：`docs/PRD/2026-04-12-OAuth-Token获取工具PRD.md`
+> 基于 FD v1.1：`docs/FD/2026-04-12-OAuth-Token获取工具FD.md`
+> 基于 TD v1.4：`docs/TD/2026-04-12-OAuth-Token获取工具TD.md`
+> 基于 TDD v1.2：`docs/TDD/2026-04-12-OAuth-Token获取工具TDD.md`
 > 目标版本：v1.15.0
 > 方案选型：**方案 B — 松耦合集成**（独立 Flask Blueprint，可启用/禁用）
 > OAuth 流程：Authorization Code + PKCE（兼容导入模式：`tenant=consumers`、不支持 `client_secret`）
@@ -16,6 +16,8 @@
 > **v1.15.0 实施收口说明**
 >
 > 当前执行清单以兼容账号导入模式为准：Tenant 固定 `consumers`，`client_secret` 不再作为支持输入，相关保存/读取/验证任务均应调整为“固定空值 + 不兼容输入拒绝”。同时，Azure 应用注册应使用 `AzureADandPersonalMicrosoftAccount`：仅组织目录会在授权前报 `unauthorized_client`，仅个人账号会在当前 `/common` 验证链路中报 `AADSTS9002331`；若门户修改受支持账户类型时报 `api.requestedAccessTokenVersion is invalid`，需先在 Manifest 中将该值设为 `2`。
+>
+> 2026-04-16 会话回填：前端已落地新手快速指引（`guide-card` + 5 步 + 教程链接占位 + 折叠记忆），Scope UX 已调整为“前端默认 Graph 预设、后端 fallback 保持 IMAP 兼容预设”。
 
 ---
 

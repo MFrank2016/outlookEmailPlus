@@ -1,8 +1,8 @@
 # TD: OAuth Token 获取工具
 
-- 文档版本: v1.3
+- 文档版本: v1.4
 - 创建日期: 2026-04-12
-- 更新日期: 2026-04-12（v1.3 — §8 测试计数同步 TDD v1.1：29+28=57）
+- 更新日期: 2026-04-16（v1.4 — 前端引导卡片与 Scope 默认口径按实现回填）
 - 文档类型: 技术细节设计
 - 关联 PRD: `docs/PRD/2026-04-12-OAuth-Token获取工具PRD.md`
 - 关联 FD: `docs/FD/2026-04-12-OAuth-Token获取工具FD.md`
@@ -15,9 +15,10 @@
 > - Tenant 固定 `consumers`
 > - `client_secret` 在页面、配置返回与保存接口中均保持为空
 > - `prepare_oauth()`、`save_config()`、`save_to_account()` 统一拒绝不兼容配置
-> - 默认 Scope 采用 IMAP 兼容预设
+> - 前端默认 Scope 采用 Graph 预设；后端环境变量默认值仍为 IMAP 兼容预设
 > - Azure 应用注册应使用 **AzureADandPersonalMicrosoftAccount**；仅组织目录会在授权前返回 `unauthorized_client`，仅个人账号会在保存前 `/common` 验证链路返回 `AADSTS9002331`
 > - 若 Azure 门户在切换该受支持账户类型时报 `api.requestedAccessTokenVersion is invalid`，需先在 Manifest 中把 `api.requestedAccessTokenVersion` 改成 `2`
+> - 2026-04-16 已落地前端新手引导机制：`<details id="guide-card">` + `localStorage(token_tool_guide_dismissed)` 记忆 + `GUIDE_TUTORIAL_LINKS` 扩展位
 >
 > 本文较早伪代码中若仍保留可变 tenant、`client_secret` 加密存储/回传、tenant-aware 或 client-secret-aware 保存链路，均已被当前实现收口逻辑取代。
 
@@ -333,7 +334,7 @@ def get_oauth_redirect_uri_default() -> str:
 
 def get_oauth_scope_default() -> str:
     """OAuth 工具默认 Scope（环境变量层）。"""
-    return _getenv("OAUTH_SCOPE", "offline_access https://graph.microsoft.com/.default") or "offline_access https://graph.microsoft.com/.default"
+    return _getenv("OAUTH_SCOPE", "offline_access https://outlook.office.com/IMAP.AccessAsUser.All") or "offline_access https://outlook.office.com/IMAP.AccessAsUser.All"
 
 
 def get_oauth_tenant_default() -> str:
@@ -378,7 +379,7 @@ def get_oauth_tool_redirect_uri() -> str:
 
 
 def get_oauth_tool_scope() -> str:
-    """Settings 表 → 环境变量 → 默认 Graph scope"""
+    """Settings 表 → 环境变量 → 默认 IMAP 兼容 scope（前端首次展示可覆盖为 Graph）"""
     value = get_setting("oauth_tool_scope")
     if value:
         return value

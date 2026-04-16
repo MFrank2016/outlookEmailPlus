@@ -4,6 +4,196 @@
 
 ---
 
+## 2026-04-16
+
+### 操作记录
+
+#### 75. OAuth Token 工具新手指引与 Graph 推荐改造 + 分批全量回归 + 启动自测现场记录
+
+**时间**：2026-04-16
+
+**本次操作**：
+
+1. 前端实现改造（仅 HTML/CSS/JS，未改后端）
+   - `templates/token_tool.html`
+     - 在 Header 与 OAuth 配置卡片之间新增 `details#guide-card` 折叠指引卡片（默认展开）。
+     - 新增 5 步 Azure 应用注册快速指引（含 Azure 门户直达链接，均为 `target="_blank" rel="noopener"`）。
+     - 新增 `guide-links` 教程链接占位区。
+     - Scope 提示文案改为“推荐优先 Graph 邮件预设（系统默认主链路）”。
+   - `static/css/token_tool.css`
+     - 新增 `.guide-body / .guide-step / .guide-step-num / .guide-step-content / .guide-links` 等样式。
+     - 样式复用现有主题变量，保持亮暗主题一致性。
+   - `static/js/features/token_tool.js`
+     - 新增 `GUIDE_TUTORIAL_LINKS` 常量（教程链接集中管理入口）。
+     - 新增 guide 折叠状态记忆（`localStorage: token_tool_guide_dismissed`）。
+     - 新增 `guide-links` 动态追加链接逻辑（仅当配置常量非空时追加）。
+     - 默认 scope 初始化切换为 Graph 预设；`DEFAULT_COMPAT_SCOPE` 同步改为 Graph。
+     - 保留 `loadOAuthConfig()` 的后端配置覆盖逻辑（后端未保存时，前端先展示 Graph）。
+
+2. 分批全量测试执行（按 300000ms 上限拆分）
+   - `python -m unittest discover -s tests -v -p "test_[a-f]*.py"` → `Ran 346 tests`，`OK`
+   - `python -m unittest discover -s tests -v -p "test_[g-l]*.py"` → `Ran 89 tests`，`OK`
+   - `python -m unittest discover -s tests -v -p "test_[m-r]*.py"` → `Ran 231 tests`，`OK (skipped=7)`
+   - `python -m unittest discover -s tests -v -p "test_[s-z]*.py"` → `Ran 492 tests`，`OK`
+   - 汇总：**1158 tests 通过，skipped=7**。
+
+3. 前端 Jest 执行现状（按会话要求补充）
+   - 直接执行 `npx jest tests/layout-system/ tests/compact-poll/`：失败（仓库根目录缺少 Jest 根配置）。
+   - 改为显式 config 执行：
+     - `npx jest --config tests/layout-system/jest.config.js`
+     - `npx jest --config tests/compact-poll/jest.config.js`
+   - 两者均失败：当前环境缺少 `jest-environment-jsdom`（Jest 28+ 需单独安装）。
+
+4. 启动自测现场（严格后台独立进程）
+   - 按会话要求使用 `Start-Process` 后台启动，不使用前台阻塞。
+   - 使用默认数据库 `data/outlook_accounts.db` 启动时，日志报错：`sqlite3.DatabaseError: database disk image is malformed`。
+   - 改为自测隔离库（设置 `DATABASE_PATH=data/selftest_*.db`）后可启动，日志显示 Flask 与调度器成功初始化。
+   - 自测日志中出现 `GET /token-tool`、`GET /static/js/features/token_tool.js`、`GET /api/token-tool/config` 等请求记录。
+   - 当前最终复核时端口 `5000` 无监听（自测进程已结束），未遗留前台阻塞链路。
+
+5. 现场状态
+   - 已完成：实现改造 + 分批全量 unittest + 启动自测尝试 + WORKSPACE 回填。
+   - 未修改后端业务逻辑文件（controllers/services/routes/config 均未变更本次需求范围）。
+
+#### 76. OAuth 会话文档按实际实现同步 + 教程规划口径梳理
+
+**时间**：2026-04-16
+
+**本次操作**：
+
+1. 会话需求
+   - 用户确认当前改造方向无阻塞，下一阶段准备编写“使用教程”。
+   - 要求先把会话相关文档按实际实现回填，并持续记录 WORKSPACE。
+
+2. 文档同步更新（按实现口径）
+   - `docs/PRD/2026-04-12-OAuth-Token获取工具PRD.md`
+     - 升级至 v1.4。
+     - 回填“快速指引卡片已落地（默认展开+可折叠）”。
+     - 回填“Scope UX 推荐 Graph 预设（后端 fallback 仍为 IMAP 兼容）”。
+     - Azure 注册步骤更新为 5 步（新增重定向 URI 步骤）。
+   - `docs/FD/2026-04-12-OAuth-Token获取工具FD.md`
+     - 升级至 v1.1。
+     - 收口说明更新为“前端默认 Graph，后端 fallback IMAP”。
+     - 模板示例中 `guide-card` 由 section 更新为 details 语义实现。
+     - 环境变量默认 Scope 描述修正为后端 IMAP 兼容默认值。
+   - `docs/TD/2026-04-12-OAuth-Token获取工具TD.md`
+     - 升级至 v1.4。
+     - 回填前端引导机制（guide 折叠记忆 + 教程链接扩展位）。
+     - 配置示例同步为后端 `OAUTH_SCOPE` IMAP 默认值。
+   - `docs/TDD/2026-04-12-OAuth-Token获取工具TDD.md`
+     - 升级至 v1.2。
+     - 口径修正为“后端默认 IMAP，前端首次展示默认 Graph”。
+   - `docs/TODO/2026-04-12-OAuth-Token获取工具TODO.md`
+     - 升级至 v1.2。
+     - 文档引用版本同步（FD/TD/TDD）。
+     - 新增 2026-04-16 会话回填说明（新手指引与 Scope UX 实施现状）。
+
+3. 运行态补充
+   - 按“后台独立进程”口径继续验证启动方式（`Start-Process` / 独立进程）。
+   - 发现默认主库 `data/outlook_accounts.db` 存在 `database disk image is malformed`。
+   - 使用隔离 DB (`DATABASE_PATH=data/selftest_bg_*.db`) 可成功启动并可访问 `/token-tool`（见对应 stdout/stderr 日志）。
+
+4. 教程规划口径（为下一步写教程准备）
+   - 教程内容应基于当前页面实际流程：
+     1) 先读快速指引 5 步 →
+     2) 填 OAuth 配置并优先 Graph 预设 →
+     3) 获取授权链接并完成授权 →
+     4) 粘贴回调 URL 换取 Token →
+     5) 写入已有账号或创建新账号。
+   - 教程外链可通过 `guide-links`（HTML 固定 + JS 常量扩展）双轨维护。
+
+5. 现场状态
+   - 本次已完成：文档回填 + WORKSPACE 记录 + 运行态口径补充。
+   - 未执行提交/推送。
+
+#### 77. 教程编写协作口径确认（用户自行截图成文）与文档细节修正
+
+**时间**：2026-04-16
+
+**本次操作**：
+
+1. 会话需求确认
+   - 用户明确：不需要 AI 代写教程正文，改为“AI 提供教学式流程指导，用户自行截图并写教程”。
+   - 执行口径保持：继续通过 MCP 回传结果，不仅写文档，还需在会话中同步说明。
+
+2. 会话文档细节修正
+   - 复核并修正 `docs/TODO/2026-04-12-OAuth-Token获取工具TODO.md` 头部版本引用：
+     - `PRD v1.3` → `PRD v1.4`
+   - 其余上一轮已回填文件维持不变（PRD v1.4 / FD v1.1 / TD v1.4 / TDD v1.2）。
+
+3. 现场状态
+   - 当前后台自测服务仍为独立进程运行（5000 监听，python 进程）。
+   - 本次仅为会话口径与文档引用精修，不涉及新增代码实现。
+
+#### 78. AADSTS70000 现场答疑回填（Graph 最小权限口径）
+
+**时间**：2026-04-16
+
+**本次操作**：
+
+1. 会话问题
+   - 用户反馈真实报错：`AADSTS70000`（scope 未授权/已失效）并询问 Graph 至少需要哪些权限。
+
+2. 文档回填
+   - `docs/PRD/2026-04-12-OAuth-Token获取工具PRD.md`
+     - 在“常见错误与用户引导”新增 `AADSTS70000` 行：
+       - 原因：scope 未授权/已失效（含授权与验证 scope 不一致）
+       - 引导：确认 Graph 最小权限并强制 Consent 重新授权
+   - `docs/FD/2026-04-12-OAuth-Token获取工具FD.md`
+     - 在 `ERROR_GUIDANCE_MAP` 示例中补充 `aadsts70000` 引导映射。
+
+3. 口径结论（用于教程写作）
+   - Graph 场景最小推荐权限：`offline_access`、`Mail.Read`、`User.Read`。
+   - 若命中 `AADSTS70000`，优先排查 scope 一致性与 consent 是否重新完成。
+
+4. 现场状态
+   - 本次仅文档与口径回填，不涉及新增代码实现与服务启停动作。
+
+#### 79. Token 工具教程链接替换为用户正式教程地址
+
+**时间**：2026-04-16
+
+**本次操作**：
+
+1. 会话需求
+   - 用户提供已完成的正式教程链接，并要求替换 Token 工具页面指引区教程入口。
+
+2. 页面更新
+   - 文件：`templates/token_tool.html`
+   - 位置：`guide-links` 区域默认教程链接
+   - 变更：
+     - 旧链接：Microsoft OAuth 官方文档
+     - 新链接：`https://real-caption-6d1.notion.site/OutlooKMailplus-token-344463aed7e680099380dc324ecdf1c9?source=copy_link`
+     - 文案更新为：`OutlookMailPlus Token 教程`
+
+3. 现场状态
+   - 本次仅替换前端静态教程入口链接，不影响后端与业务逻辑。
+
+#### 80. README 中 OAuth Token 工具口径同步（Graph 推荐 + 教程链接）
+
+**时间**：2026-04-16
+
+**本次操作**：
+
+1. 会话需求
+   - 用户要求基于本轮改造内容更新 README / README.en，并准备后续推送。
+
+2. 文档更新（README）
+   - `README.md`
+     - OAuth Token 工具章节同步如下口径：
+       - 前端默认推荐 Graph 预设（后端 fallback 仍为 IMAP）。
+       - 新增 `AADSTS70000` 排查要点（scope 一致性 + 强制 Consent）。
+       - 新增 Graph 最小权限建议：`offline_access + Mail.Read + User.Read`。
+       - 补充页面教程链接（Notion 正式教程）。
+     - 环境变量段 `OAUTH_SCOPE` 描述改为“后端环境默认 fallback，前端首次展示为 Graph”。
+   - `README.en.md`
+     - 同步英文口径：Graph default recommendation、`AADSTS70000` guidance、minimum Graph permissions、tutorial link。
+     - `OAUTH_SCOPE` 描述同步为 backend fallback vs frontend first-render default。
+
+3. 现场状态
+   - 本次仅更新文档与记录，不涉及新增后端实现。
+   - 当前工作区保留前序会话中的代码与文档改动，待统一确认后提交。
+
 ## 2026-04-15
 
 ### 操作记录
