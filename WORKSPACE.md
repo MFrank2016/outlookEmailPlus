@@ -8,6 +8,44 @@
 
 ### 操作记录
 
+#### 123. v1.18.0 正式发布完成（GitHub Release + 附件上传）
+
+**时间**：2026-04-16
+
+**本次操作**：
+
+1. 版本准备
+   - 版本号：`1.17.0` -> `1.18.0`
+   - 更新：`outlook_web/__init__.py`
+   - 同步：`README.md`、`README.en.md`、`tests/test_version_update.py`
+   - 发布记录：`CHANGELOG.md`、`docs/DEVLOG.md`
+
+2. 发布前验证
+   - 全量测试：`python -m unittest discover -v`
+   - 结果：`Ran 1187 tests in 458.110s`，`OK (skipped=7)`
+
+3. 发布产物构建
+   - Docker 镜像：`docker build -t outlook-email-plus:v1.18.0 .`
+   - 镜像 ID：`sha256:a3fa082473f29ce34054362cf8550c3dce35d0a5f18154d924f15170c3c333cd`
+   - 导出产物：
+     - `dist/outlook-email-plus-v1.18.0-docker.tar`（204,749,824 bytes）
+     - `dist/outlookEmailPlus-v1.18.0-src.zip`（4,127,512 bytes）
+
+4. 发布执行
+   - 提交：`8bfeea8` `docs(release): finalize v1.18.0 artifacts`
+   - 打标：`v1.18.0`
+   - 推送：`git push origin main`、`git push origin v1.18.0`
+   - 创建 Release：`gh release create v1.18.0 ...`
+   - 发布页：`https://github.com/ZeroPointSix/outlookEmailPlus/releases/tag/v1.18.0`
+
+5. Release 附件核对
+   - `outlook-email-plus-v1.18.0-docker.tar`
+     - size=`204749824`
+     - digest=`sha256:d208b6bc623fbad0cd0a9d33c93f2cb9b9e9b2428fed0c4bf0ec565fec311a02`
+   - `outlookEmailPlus-v1.18.0-src.zip`
+     - size=`4127512`
+     - digest=`sha256:3bd2ff20608c1596f4770714aba1730d7a8bcb67b1b1ed547deac469c1f6194d`
+
 #### 122. 本地 main 再次全量回归扫查：未发现新增回归
 
 **时间**：2026-04-16
