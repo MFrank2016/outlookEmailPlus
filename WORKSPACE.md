@@ -615,6 +615,25 @@ CORS(app, resources={
 - 设计讨论已完成，方案定稿，**尚未决定是否开始实施**
 
 
+#### 162. 合并 dev -> main 发布浏览器扩展 v0.1.0
+
+**时间**：2026-04-18
+
+**操作**：
+- main 工作树执行 `git merge origin/dev --no-ff`，合并 20 个文件，4930 insertions
+- `git push origin main`（`a9381f8` → `663f1ff`）
+
+**合并内容**：
+- 浏览器扩展完整代码（`browser-extension/`）
+- CORS 支持（`outlook_web/app.py`）
+- pool_status 修复（`controllers/accounts.py`、`repositories/accounts.py`）
+- FD/TD/TDD 设计文档
+- README.md / README.en.md 浏览器扩展章节
+
+**结果**：浏览器扩展 v0.1.0 已发布到 main ✅
+
+---
+
 #### 161. 合并 main -> dev + 全量测试验证
 
 **时间**：2026-04-18
