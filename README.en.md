@@ -34,13 +34,32 @@ The repository already includes some screenshots, and more can be added later.
 ![Verification Code Extraction](img/提取验证码.png)
 ![Settings](img/设置界面.png)
 
-## Recent Updates
+## Version Highlights
 
-Highlights include:
+Current stable version: `v2.0.0`
 
-- Current stable version: `v2.0.0`
+### Recent Version Overview
 
-**OAuth Token Tool**
+| Version | Date | Key New Features |
+|---------|------|-----------------|
+| **v2.0.0** | 2026-04 | 🌐 **Browser Extension** (Chrome/Edge MV3): one-click claim → auto-extract verification code/link → complete/release, no tab-switching needed; backend adds `chrome-extension://` CORS support |
+| **v1.19.0** | 2026-04 | 🔧 Structured refresh-failure hints (error code + actionable steps + trace guide); fixed Selected account refresh early-exit (Issue #45) |
+| **v1.18.0** | 2026-04 | 🔄 Mail pool **project-scoped success reuse**: with explicit `project_key + caller_id + task_id`, `success` returns mailbox to `available` for immediate cross-project reuse (DB v22) |
+| **v1.17.0** | 2026-04 | 🪝 **Webhook notification channel**: single global URL, co-exists with Email/Telegram; one-click random X-API-Key generation |
+| **v1.16.0** | 2026-04 | 🔑 OAuth Token tool upgrade: new "Get Authorization Link" mode for stable cross-environment auth |
+| **v1.15.0** | 2026-04 | 🤖 **AI verification-code enhancement**: system-level AI fallback (only when both confidence scores are low), fixed JSON contract; **email alias** (`+tag`) auto-normalization |
+| **v1.13.0** | 2026-04 | ⚡ **One-click hot-update**: Watchtower (recommended) and Docker API dual modes, auto-detect new version with in-app banner |
+| **v1.11.0** | 2026-04 | 🏊 **Mail pool project isolation** (`project_key`); CF Worker multi-domain + Admin Key encryption; frontend account list pagination; unified poll engine |
+| **v1.9.0** | 2026-03 | 🌐 **Bilingual UI** (Chinese/English); unified notification dispatch (Email + Telegram); demo-site password lock |
+
+---
+
+### v2.0.0 — Browser Extension (New)
+
+The `browser-extension/` directory contains a Chrome/Edge Manifest V3 extension. See the [Browser Extension](#browser-extension) section below.
+
+### v1.15.0–v1.16.0 — OAuth Token Tool
+
 - Added a dedicated popup-style token tool for **compatibility-mode account import**
 - The supported contract is now fixed to personal Microsoft accounts: Public Client, `tenant=consumers`, and no `client_secret`
 - The Azure app registration should use **Accounts in any identity provider or organizational directory and personal Microsoft accounts**; org-only apps fail with `unauthorized_client`, while **Personal Microsoft accounts only** conflicts with the current `/common` validation/runtime model and can fail with `AADSTS9002331`
@@ -51,36 +70,21 @@ Highlights include:
 - Built-in Azure quick-start guide card (5 steps) and tutorial link: <https://real-caption-6d1.notion.site/OutlooKMailplus-token-344463aed7e680099380dc324ecdf1c9?source=copy_link>
 - Supports writing refresh tokens into existing Outlook accounts or creating new accounts after validation, while rejecting incompatible configurations
 
-**One-Click Update**
+### v1.13.0 — One-Click Update
+
 - Two update methods: Watchtower (recommended) and Docker API self-update (advanced)
 - Automatic GitHub release detection with in-app update banner
 - Full deployment info detection: image tag, local build, Watchtower connectivity, etc.
 - Watchtower "already latest" smart detection (based on Watchtower synchronous behavior)
 - Docker API digest pre-check — skips update when already on latest version
-- Fixed browser caching stale JS files
 
-**Mail Pool Enhancements**
-- Project-scoped success reuse (v1.18.0 / DB v22): for long-lived mailboxes claimed with explicit `project_key + caller_id + task_id`, duplicate prevention now keys off same-project success history, and `claim-complete(result=success)` returns the mailbox to `available` for immediate cross-project reuse; requests without `project_key` and `cloudflare_temp_mail` still keep the legacy behavior
+### v1.11.0 — Mail Pool & Frontend Enhancements
 
-**CF Worker Temp Mail**
-- Multi-domain support: multiple CF Worker domains can now be configured in the Settings page; a new "Sync Domains" button refreshes the domain list in one click
-- Admin Key encrypted at rest: `cf_worker_admin_key` is now stored with an `enc:` prefix using symmetric encryption and is no longer saved in plaintext (DB v18)
-
-**Frontend UX Fixes**
-- BUG-06: mailbox selection highlight is correctly preserved after generating or deleting a temp mailbox
-- BUG-07: domain dropdown selection is no longer reset when the temp-mail panel refreshes its message list
-- Issue #24: fixed email expand/active state being lost on re-render, i18n language switch not refreshing the account list, and viewport height chain breakage
-
-**Poll Engine Refactor**
-- Merged the dual polling systems (standard mode + compact mode) into a single unified `poll-engine` (4-phase refactor)
-- Fixed batch email fetching on initial load, duplicate poll start on group switch, and cross-view poll state accumulation
-
-**Account List**
-- Added frontend pagination (50 accounts per page) for smoother rendering with large account sets
-
-**i18n**
-- Added bilingual translations for temp-mail panel domain hint texts and CF Worker domain sync button
-- Emoji-prefixed text translations, settings tab labels, and connectivity/update status messages
+- **Mail pool project isolation**: `project_key` prevents duplicate claiming in the same project (DB v17)
+- **CF Worker multi-domain support**: configure multiple CF Worker domains in Settings; "Sync Domains" button refreshes the list in one click
+- **Admin Key encrypted at rest**: `cf_worker_admin_key` stored with `enc:` prefix (DB v18)
+- **Frontend account list pagination**: 50 accounts per page for smoother rendering
+- **Unified poll engine**: merged dual polling systems (standard + compact) into single `poll-engine`, fixing race conditions and state accumulation
 
 ## Core Capabilities
 

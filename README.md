@@ -38,56 +38,58 @@ OutlookMail Plus 是一款面向个人与团队的注册邮箱管理器。
 ![设置界面](img/设置界面.png)
 
 
-## 最近更新
+## 版本亮点
 
-重点包括：
+当前稳定版本：`v2.0.0`
 
-- 当前稳定版本：`v2.0.0`
+### 近期版本速览
 
-**OAuth Token 获取工具**
+| 版本 | 日期 | 核心新功能 |
+|------|------|-----------|
+| **v2.0.0** | 2026-04 | 🌐 **浏览器扩展**（Chrome/Edge MV3）：一键申领邮箱 → 自动提取验证码/链接 → 完成/释放，无需切换标签页；后端新增 `chrome-extension://` CORS 跨域支持 |
+| **v1.19.0** | 2026-04 | 🔧 刷新失败提示结构化增强（错误码 + 可执行步骤 + trace 反馈指引）；Selected 账号刷新提前失败修复（Issue #45） |
+| **v1.18.0** | 2026-04 | 🔄 邮箱池**项目成功复用**：显式携带 `project_key + caller_id + task_id` 时，success 后直接回到 `available`，支持跨项目立即复用（DB v22）|
+| **v1.17.0** | 2026-04 | 🪝 **Webhook 通知通道**：全局单 URL 配置，与 Email/Telegram 并存；X-API-Key 随机生成快捷入口 |
+| **v1.16.0** | 2026-04 | 🔑 OAuth Token 工具升级：新增"获取授权链接"模式，稳定支持跨环境授权 |
+| **v1.15.0** | 2026-04 | 🤖 **AI 验证码增强**：系统级 AI fallback（双低置信才触发），固定 JSON 契约；**邮箱别名**（`+tag`）自动识别与回溯 |
+| **v1.13.0** | 2026-04 | ⚡ **一键热更新**：Watchtower（推荐）和 Docker API 双模式，自动检测新版本弹出提示 |
+| **v1.11.0** | 2026-04 | 🏊 **邮箱池项目隔离**（`project_key`）；CF Worker 多域 + Admin Key 加密；前端账号列表分页；统一轮询引擎 |
+| **v1.9.0** | 2026-03 | 🌐 **双语界面**（中/英）；统一通知分发（Email + Telegram）；演示站点登录密码保护 |
+
+---
+
+### v2.0.0 — 浏览器扩展（新）
+
+`browser-extension/` 目录包含 Chrome/Edge Manifest V3 扩展，详见 [浏览器扩展](#浏览器扩展) 章节。
+
+### v1.15.0–v1.16.0 — OAuth Token 获取工具
+
 - 新增独立 Token 工具窗口，以**兼容账号导入模式**获取 Microsoft refresh token
 - 当前模式固定面向个人 Microsoft 账号：Public Client、`tenant=consumers`、不支持 `client_secret`
 - Azure 应用注册的 **Supported account types** 应选择 **Accounts in any identity provider or organizational directory and personal Microsoft accounts**；仅组织目录会报 `unauthorized_client`，而 **Personal Microsoft accounts only** 会在写入前 `/common` 验证阶段报 `AADSTS9002331`
 - 如果 Azure 门户在切换 Supported account types 时提示 `Property api.requestedAccessTokenVersion is invalid`，请到 **Manifest** 中把 `api.requestedAccessTokenVersion` 改为 `2`
-- 如果已经开启 Public Client 仍然报“必须包含 `client_secret`”，说明当前回调仍被 Azure 视为机密 Web 客户端；此时应改用 **Mobile and desktop applications** 平台的 public redirect（如 `http://localhost`），并在工具里走手动粘贴回调 URL
-- 如果遇到 `AADSTS70000`（scope 未授权/失效），优先检查“授权时 scope”和“验证时 scope”是否一致，并重新执行一次 **强制 Consent** 授权
+- 如果已经开启 Public Client 仍然报"必须包含 `client_secret`"，说明当前回调仍被 Azure 视为机密 Web 客户端；此时应改用 **Mobile and desktop applications** 平台的 public redirect（如 `http://localhost`），并在工具里走手动粘贴回调 URL
+- 如果遇到 `AADSTS70000`（scope 未授权/失效），优先检查"授权时 scope"和"验证时 scope"是否一致，并重新执行一次 **强制 Consent** 授权
 - Graph 场景建议最小权限：**offline_access + Mail.Read + User.Read**；如需 IMAP 再额外补 **Office 365 Exchange Online → IMAP.AccessAsUser.All**
 - 支持 Graph / IMAP Scope 预设、错误引导、JWT audience/scope 诊断；前端默认推荐 **Graph 邮件预设**（后端环境变量 fallback 保持 IMAP 兼容 Scope）
 - 页面内置 Azure 应用注册快速指引折叠卡片（5 步）与教程入口：<https://real-caption-6d1.notion.site/OutlooKMailplus-token-344463aed7e680099380dc324ecdf1c9?source=copy_link>
 - 支持一键写入已有 Outlook 账号或创建新账号，写入前自动验证 refresh token，并拒绝不兼容配置
 
-**一键更新**
+### v1.13.0 — 一键更新
+
 - 支持两种更新方式：Watchtower（推荐）和 Docker API 自更新（高级）
 - 自动检测 GitHub 最新版本，界面弹出更新提示
 - 完整的部署信息检测：镜像标签、本地构建、Watchtower 连通性等
 - Watchtower 已是最新版本智能检测（基于 Watchtower 同步行为）
 - Docker API 模式 digest 预检查，相同版本不触发无效更新
-- 修复了浏览器缓存旧 JS 文件的问题
 
-**邮箱池增强**
-- 项目维度成功复用（v1.18.0 / DB v22）：长期邮箱在显式 `project_key + caller_id + task_id` 路径下，`claim-random` 改为按“同项目 success 记录”防重，`claim-complete(result=success)` 后直接回到 `available`，支持跨项目立即复用；未传 `project_key` 与 `cloudflare_temp_mail` 继续保持旧语义
+### v1.11.0 — 邮箱池 & 前端增强
 
-**CF Worker 临时邮箱**
-- 多域支持：可在设置页配置多个 CF Worker 域名，新增"同步域名"按钮一键刷新域名列表
-- Admin Key 加密存储：`cf_worker_admin_key` 以 `enc:` 前缀加密写入数据库，不再明文存储（DB v18）
-- 临时邮箱页域名联动修复：`/api/temp-emails/options` 支持按 `provider_name` 返回配置，切换到 CF provider 后可正确展示 CF 域名下拉
-- 自动同步兜底（v0.3.1）：当 `cf_worker_domains` 为空但 `cf_worker_base_url` 已配置时，系统会自动从 CF Worker 拉取 domains 并写回本地配置
-- 配置注意：`cf_worker_admin_key` 必须与 Worker 的 ADMIN_PASSWORDS 一致；不一致时创建邮箱会返回 `UNAUTHORIZED`
-
-**前端体验修复**
-- BUG-06：生成或删除临时邮箱后，列表中已选中邮箱的高亮状态得到正确保留
-- BUG-07：临时邮箱面板刷新邮件列表后，域名下拉选择不再被重置
-- Issue #24：修复邮件展开/激活状态在重渲染后丢失、i18n 语言切换后账号列表不刷新、视口高度链路断裂等问题
-
-**轮询引擎重构**
-- 将标准模式和简洁模式的双轮询系统合并为统一的 `poll-engine`（4 阶段重构）
-- 修复初始加载时批量邮件请求、分组切换重复启动轮询、跨视图轮询状态积压等问题
-
-**账号列表**
-- 新增前端分页（每页 50 条），大量账号时列表加载更流畅
-
-**i18n**
-- 临时邮箱面板域名提示文字、CF Worker 域名同步按钮新增中英双语翻译
+- **邮箱池项目隔离**：`project_key` 防止同项目重复领取（DB v17）
+- **CF Worker 临时邮箱多域支持**：设置页配置多个域名，"同步域名"按钮一键刷新
+- **Admin Key 加密存储**：`cf_worker_admin_key` 以 `enc:` 前缀加密写入数据库（DB v18）
+- **账号列表前端分页**：每页 50 条，大量账号时列表加载更流畅
+- **统一轮询引擎**：标准模式与简洁模式合并为单一 `poll-engine`，修复竞态与状态积压
 
 ## 核心能力
 
