@@ -38,6 +38,20 @@
       - `sha256:2d93c6102eb85651524571c2b9cbfd2fa6805066c8d3b0d5a057ef7e4b35df56`
     - `dist/browser-extension-v0.2.0.zip`（38,097 bytes）
       - `sha256:a237c1796c662e8c5bba205dfea0db8017812478f499c66b4f11d2e4e6416033`
+- GitHub Actions / 发布后核对：
+  - `Create GitHub Release`（run `#17` / id `24647782184`）✅ 成功，自动创建 `v2.1.0` Release
+  - `Python Tests`（run `#94` / id `24647781295`，`head_sha=7cf7557`）✅ 成功
+  - `SonarCloud Scan`（run `#124` / id `24647845503`，`head_sha=5b65a70`）✅ 成功
+  - `Code Quality`（run `#92` / id `24647781303`，`head_sha=7cf7557`）❌ 失败
+    - `Security Scan` job 成功
+    - `Code Linting` job 失败于 `Run Black (Code Formatter Check)`
+    - 日志结论：`10 files would be reformatted, 200 files would be left unchanged.`
+  - `Build and Push Docker Image`（run `#179` / id `24647782181`，tag `v2.1.0`）❌ 失败
+    - `quality-gate` job 失败于 `Run formatter checks`
+    - `build-and-push` job 被直接 `skipped`
+    - 结论：GitHub Release 已创建，但注册表镜像发布未完成，需先修复格式化问题再重跑该工作流
+- Release 地址：
+  - `https://github.com/ZeroPointSix/outlookEmailPlus/releases/tag/v2.1.0`
 
 ## v2.0.0 - 浏览器扩展 v0.1.0 发布
 

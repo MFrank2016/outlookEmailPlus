@@ -37,6 +37,12 @@ All notable changes to OutlookMail Plus are documented in this file.
   - `dist/outlook-email-plus-v2.1.0-docker.tar`（177,893,376 bytes）
   - `dist/outlookEmailPlus-v2.1.0-src.zip`（4,335,587 bytes）
   - `dist/browser-extension-v0.2.0.zip`（38,097 bytes）
+- GitHub Actions 实际结果：
+  - `Create GitHub Release`（tag `v2.1.0`）✅ 成功
+  - `Python Tests`（release commit `7cf7557`）✅ 成功
+  - `SonarCloud Scan`（post-release docs commit `5b65a70`）✅ 成功
+  - `Code Quality`（release commit `7cf7557`）❌ 失败：`black --check` 报告 10 个文件需格式化
+  - `Build and Push Docker Image`（tag `v2.1.0`）❌ 失败：`quality-gate` 卡在 formatter checks，`build-and-push` job 未执行，因此镜像仓库发布未完成
 
 ## [v2.0.0] - 2026-04-18
 

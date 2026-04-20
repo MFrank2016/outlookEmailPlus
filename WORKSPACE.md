@@ -1016,6 +1016,47 @@
 - `v2.1.0` 已完成本地版本收口、远端主分支推送、tag 推送与 GitHub Release 附件上传。
 - 下一步仅剩把这条 `WORKSPACE.md` 发布记录提交并推送到 `main`，作为发布后的仓库现场同步。
 
+#### 203. 核对 v2.1.0 CI/CD 实际状态，并按真实结果修正文档
+
+**时间**：2026-04-20
+
+**本次背景**：
+
+- 在 `v2.1.0` 已发布后，继续对 GitHub Actions 做发布后核对，确认 Release、测试、质量门禁与 Docker 发布链路是否全部与文档假设一致。
+
+**核对结果**：
+
+1. 成功项：
+   - `Create GitHub Release`（run `#17` / id `24647782184`）成功
+   - `Python Tests`（run `#94` / id `24647781295`，`head_sha=7cf7557`）成功
+   - `SonarCloud Scan`（run `#124` / id `24647845503`，`head_sha=5b65a70`）成功
+
+2. 失败项：
+   - `Code Quality`（run `#92` / id `24647781303`，`head_sha=7cf7557`）失败
+     - `Security Scan` 成功
+     - `Code Linting` 失败于 `Run Black (Code Formatter Check)`
+     - 日志关键信息：`10 files would be reformatted, 200 files would be left unchanged.`
+   - `Build and Push Docker Image`（run `#179` / id `24647782181`，tag `v2.1.0`）失败
+     - `quality-gate` 失败于 `Run formatter checks`
+     - `build-and-push` job 被 `skipped`
+     - 实际含义：Release 已创建，但 GHCR / DockerHub 的 tag 镜像发布并未完成
+
+3. 额外确认：
+   - 当前 `Code Quality` / `Python Tests` / `Build and Push Docker Image` 工作流均有 `paths` 过滤
+   - 因此后续仅修改文档或 `WORKSPACE.md` 的 push，不会自动重跑这些工作流；不能拿 docs-only push 的状态替代 release commit / tag 的真实结果
+
+**已同步修正文档**：
+
+- `CHANGELOG.md`
+- `docs/DEVLOG.md`
+- `RELEASE.md`
+- `WORKSPACE.md`
+
+**当前状态**：
+
+- 文档已与 `v2.1.0` 的真实发布状态对齐：Release 成功、Python Tests 成功、Sonar 成功，但 Code Quality 与 Docker 发布链路失败。
+- 下一步如需让整个 CI/CD 真正转绿，需要处理 Black 格式化差异并重新触发相关工作流。
+
 ---
 
 ## 2026-04-18

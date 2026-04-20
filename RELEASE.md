@@ -43,6 +43,7 @@ Tag 统一带 `v` 前缀：`v1.11.0`。
 
 2. **CI 全绿**
    - `Code Quality`、`Python Tests`、`Build and Push Docker Image` 等工作流通过
+   - 注意：`Code Quality` / `Python Tests` / `Build and Push Docker Image` 都带 `paths` 过滤，纯文档或 `WORKSPACE.md` 提交不会自动重跑；发版时必须检查“版本提交 / tag 对应的那次运行”，不能拿后续 docs-only push 的结果替代
 
 3. **变更记录准备完成**
    - `CHANGELOG.md` 已补齐本次版本的变更
@@ -104,6 +105,11 @@ git push origin vX.Y.Z
 
 在 GitHub Actions 中确认 `Build and Push Docker Image` 成功，且 `build-and-push` job 没有被跳过。
 
+补充说明（当前仓库真实行为）：
+- `docker-build-push.yml` 在真正构建镜像前，会先跑 `quality-gate`
+- `quality-gate` 内包含 `black --check`、`isort --check-only`、`flake8`、`mypy`、`bandit` 与全量 `unittest`
+- 其中任一失败，`build-and-push` job 会被跳过，注册表镜像不会发布
+
 6. **验证镜像**
 
 ```bash
@@ -122,6 +128,8 @@ docker pull guangshanshui/outlook-email-plus:latest
 
 push `vX.Y.Z` tag 后，会由工作流 `.github/workflows/create-github-release.yml` 自动创建同名 Release，内容从 `CHANGELOG.md` 对应章节提取。
 如需补充附件或微调文案，可在 GitHub Releases 页面直接编辑。
+
+注意：`Create GitHub Release` 与 `Build and Push Docker Image` 是两条独立工作流。也就是说，**即使 Docker 发布失败，GitHub Release 仍可能成功创建**；因此发版完成判断必须分别检查“Release 创建状态”和“镜像发布状态”。
 
 ## Hotfix（紧急修复）流程
 
