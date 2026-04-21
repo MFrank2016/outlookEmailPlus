@@ -418,6 +418,8 @@ input, textarea, select { font-family: inherit; }
 .btn-sm { padding: 0.3rem 0.7rem; font-size: 0.78rem; }
 .btn-icon { padding: 0.4rem; font-size: 0.9rem; background: none; border: none; color: var(--text-muted); border-radius: var(--radius-sm); }
 .btn-icon:hover { background: var(--border-light); color: var(--text); }
+/* 桌面端隐藏「展开分组」按钮，仅在平板断点显示 */
+.btn-toggle-groups { display: none; }
 .btn-icon.tg-push-active { color: #0088cc; filter: drop-shadow(0 0 2px #0088cc66); }
 .tg-push-tag { background-color: #0088cc !important; color: white !important; cursor: pointer; font-size: 0.7rem; padding: 1px 6px; border-radius: 3px; transition: opacity 0.2s; }
 .tg-push-tag:hover { opacity: 0.8; }
@@ -1347,8 +1349,46 @@ tr:hover td { background: rgba(184,92,56,0.04); }
   .btn-github { gap: 0; overflow: hidden; }
   .btn-github span { display: none; }
   .page { padding: 1rem; }
-  .groups-column { width: 180px; }
-  .accounts-column { width: 240px; }
+  /* mailbox：平板下固定 accounts 宽度，覆盖历史拖拽 inline width */
+  .workspace.workspace-mailbox .accounts-column { width: 220px !important; }
+  /* temp-emails：平板下左侧列表栏适度收窄 */
+  .workspace.workspace-temp-emails #tempEmailPanel { width: 260px !important; }
+  /* temp-emails：平板下默认只展示消息列，详情按需展开 */
+  .workspace.workspace-temp-emails #tempEmailDetailSection { display: none; }
+  .workspace.workspace-temp-emails.detail-focus #tempEmailMessagePanel { display: none !important; }
+  .workspace.workspace-temp-emails.detail-focus #tempEmailDetailSection { display: flex !important; }
+  /* mailbox：平板下进入详情时隐藏列表，避免“列表 + 详情”同时挤压 */
+  #emailListPanel.detail-focus #emailList { display: none; }
+  #emailListPanel.detail-focus #emailDetailSection {
+    display: flex !important;
+    flex: 1;
+    border-top: none;
+  }
+  /* 平板断点：默认折叠 groups 栏 */
+  .workspace.workspace-mailbox .groups-column {
+    display: none;
+  }
+  /* 平板断点下显示「展开分组」按钮 */
+  .btn-toggle-groups {
+    display: inline-flex;
+  }
+  /* 展开覆盖：groups 作为浮动侧边面板 */
+  .workspace.workspace-mailbox .groups-column.groups-expanded {
+    display: flex;
+    position: absolute;
+    left: 60px;
+    top: 52px;
+    height: calc(100vh - 52px);
+    width: 220px;
+    z-index: 20;
+    box-shadow: 4px 0 24px rgba(0,0,0,0.25);
+    border-right: 1px solid var(--border);
+    background: var(--bg-card);
+  }
+  /* 隐藏 groups 与 accounts 之间的 resizer */
+  .workspace-resizer[data-resize-role="groups-to-accounts"] {
+    display: none;
+  }
 }
 
 /* ===== 响应式：手机（抽屉式侧边栏） ===== */
@@ -1401,6 +1441,22 @@ tr:hover td { background: rgba(184,92,56,0.04); }
   .emails-column {
     width: 100%;
   }
+  /* 移动端：临时邮箱默认隐藏详情区，点击邮件后由 JS 展示 */
+  .workspace.workspace-temp-emails #tempEmailDetailSection { display: none; }
+  .workspace.workspace-temp-emails.detail-focus #tempEmailMessagePanel { display: none !important; }
+  .workspace.workspace-temp-emails.detail-focus #tempEmailDetailSection { display: flex !important; }
+  /* 移动端：邮箱详情 focus 时隐藏列表、展开详情 */
+  #emailListPanel.detail-focus #emailList { display: none; }
+  #emailListPanel.detail-focus #emailDetailSection {
+    display: flex !important;
+    flex: 1;
+    border-top: none;
+  }
+  /* 移动端隐藏 resizer */
+  .workspace-resizer,
+  .resize-handle {
+    display: none;
+  }
   .mailbox-compact-layout { padding: 0.85rem; }
   .compact-board { padding: 0.8rem; }
   .mail-head { display: none; }
@@ -1426,11 +1482,6 @@ tr:hover td { background: rgba(184,92,56,0.04); }
   .select-cell::before { display: none; }
   .action-cell { grid-column: 2; }
   .compact-actions { justify-content: flex-start; }
-  /* 移动端隐藏 resizer */
-  .workspace-resizer,
-  .resize-handle {
-    display: none;
-  }
 
   .stat-grid { grid-template-columns: repeat(2, 1fr); gap: 0.65rem; }
   .dashboard-grid { grid-template-columns: 1fr; }

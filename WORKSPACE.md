@@ -4,6 +4,190 @@
 
 ---
 
+## 2026-04-21
+
+### 操作记录
+
+#### 210. 标准模式小窗 UI 排版错乱 — BUG 分析与 TODO 拆分
+
+**时间**：2026-04-21
+
+**背景**：
+- 用户要求分析 `docs/BUG/2026-04-21-标准模式小窗UI排版错乱-Grid断点适配缺陷.md`
+- 该 BUG 来自 GitHub Issue #50，Owner 已确认小窗存在 UI 问题
+- **用户进一步要求**：最终效果应是"响应式的"，需考虑 PWA 适配
+
+**第一轮分析（基于 BUG 文档）**：
+
+1. **文档质量评估**：
+   - 文档结构完整，核心数学推导（四栏最小 1010px + 侧边栏 220px = 1230px 溢出阈值）逻辑自洽
+   - 代码引用（`layout.css`、`layout-manager.js`、`main.css`）经核对**引用内容存在**
+
+2. **第二轮深度验证（关键发现）**：
+   - `tests/layout-system/README.md` 明确标注 `layout-manager.js` / `layout.css` / `state-manager.js` 为 **Deprecated**
+   - `test_smoke_contract.py` 明确断言这些文件**不应**出现在 HTML 中
+   - **结论**：BUG 文档分析的 Grid 四栏布局系统已废弃，**不是当前生产代码**
+
+3. **当前生产代码实际状态**：
+   - 模板使用 `<div class="workspace workspace-mailbox">`（flex 三栏布局）
+   - CSS 定义：`.groups-column { width: 220px; flex-shrink: 0; }`、`.accounts-column { width: 280px; flex-shrink: 0; }`
+   - **实际根因**：`@media (max-width: 1024px) and (min-width: 769px)` 只处理了 sidebar（缩为 60px），但 `.workspace` 仍为 `flex-direction: row`，三栏固定宽度无自适应机制
+   - **问题区间**：800px~1024px 时，三栏内容（搜索栏、+按钮、分页）开始挤压错位
+
+**用户方向性要求**：
+- 不要只做局部断点修复
+- 要建立**完整的响应式断点体系**
+- 考虑 **PWA** 视口适配（`manifest.json`、`100dvh` 等）
+
+**本次产出**：
+
+| 文件 | 说明 |
+|------|------|
+| `docs/TODO/2026-04-21-Grid断点适配缺陷修复TODO.md` | 任务拆分文档（已按实际代码重新分析，含响应式策略草案 + PWA 考虑） |
+
+#### 211. 用户选择方案 B — 生成实现提示词
+
+**时间**：2026-04-21
+
+**用户决策**：
+- 明确选择 **方案 B：平板断点折叠 groups 栏**
+- 要求根据 TODO 结合实际代码生成精确实现提示词，供其他 AI 执行代码修改
+
+**本次文档更新**：
+
+| 文件 | 操作 | 说明 |
+|------|------|------|
+| `docs/BUG/2026-04-21-标准模式小窗UI排版错乱-Grid断点适配缺陷.md` | 修改 | 增加「重要勘误」与「按实际生产代码重新分析」章节，废弃 Grid 方案 |
+| `docs/TODO/2026-04-21-Grid断点适配缺陷修复TODO.md` | 修改 | 标记方案 B 已选定，更新 Task 状态 |
+| `WORKSPACE.md` | 修改 | 记录用户决策 |
+
+**当前状态**：
+- BUG 文档已修正（Grid → flex 三栏）
+- TODO 已更新（方案 B 已选定）
+- 实现提示词已生成，待用户确认后交由其他 AI 执行
+- 尚未修改任何业务代码
+
+---
+
+#### 212. 方案 B 代码修改落地 — 平板断点折叠 groups 栏
+
+**时间**：2026-04-21
+
+**本次修改**：
+
+| 文件 | 改动 |
+|------|------|
+| `static/css/main.css` | 平板断点 `@media (max-width: 1024px) and (min-width: 769px)` 中：<br>- 默认隐藏 `.workspace.workspace-mailbox .groups-column`<br>- 增加 `.groups-expanded` 绝对定位浮动面板样式<br>- 隐藏 groups-accounts resizer<br>- 全局增加 `.btn-toggle-groups { display: none; }` 桌面端隐藏 |
+| `templates/index.html` | `accounts-column` header 中增加 `☰` 展开分组按钮 `#btnToggleGroups` |
+| `static/js/main.js` | 增加 `toggleGroupsColumn()` 函数，切换 `groups-expanded` class 并更新按钮 title |
+| `static/js/i18n.js` | 增加「展开分组」/「收起分组」两条翻译词条 |
+
+**全量回归测试**：
+- 命令：`python -m unittest discover -s tests -v`
+- 结果：`Ran 1243 tests in 301.871s`
+- 状态：`OK (skipped=7)` ✅
+
+**当前状态**：
+- 代码修改已完成，全量测试通过
+- 待浏览器人工验收（1366px / 1024px / 900px / 800px / 768px 断点行为）
+
+---
+
+#### 213. 移动端 detail-focus 补全 — 邮箱列表/详情 + 临时邮箱响应式修复
+
+**时间**：2026-04-21
+
+**问题分析**：
+- 之前的 detail-focus CSS 规则只添加在平板断点 (769-1024px)
+- 移动端断点 (≤768px) 缺失 detail-focus 规则，导致：
+  - 临时邮箱详情区 `tempEmailDetailSection` 在移动端默认可见（无 `display:none`）
+  - 邮箱详情区在移动端无法正确切换列表/详情
+- JS `setMailboxDetailFocus` / `setTempDetailFocus` 在 `active=false` 时无条件设置 `display:none`，会误伤桌面端
+
+**本次修改**：
+
+| 文件 | 改动 |
+|------|------|
+| `static/css/main.css` | 移动端 `@media (max-width: 768px)` 中新增：<br>- `#tempEmailDetailSection { display: none }` 默认隐藏<br>- `.detail-focus` 临时邮箱/邮箱列表切换规则<br>- 合并已有的 resizer 隐藏规则 |
+| `templates/index.html` | `tempEmailDetailSection` 添加 `style="display:none"` 行内默认隐藏 |
+| `static/js/features/emails.js` | `setMailboxDetailFocus` 和 `setTempDetailFocus` 重构为三段逻辑：<br>- 窄视口 + 进入详情 → 隐藏列表/展示详情<br>- 窄视口 + 退出详情 → 恢复列表/隐藏详情<br>- 桌面视口 → 清除内联样式，让 CSS 控制 |
+
+**待验收项**：
+- 桌面端 (>1024px)：邮箱列表+详情双栏正常；临时邮箱三栏正常
+- 平板端 (769-1024px)：groups 折叠；邮件详情 focus 切换正常
+- 移动端 (≤768px)：全部垂直堆叠；邮件详情 focus 切换正常；临时邮箱详情区默认隐藏
+
+---
+
+#### 214. 服务重启 — 端口 5600 加载最新响应式修复代码
+
+**时间**：2026-04-21
+
+**操作**：
+- 停止旧进程 (PID 12316，端口 5600)
+- 入口文件确认：`web_outlook_app.py`（非 `app.py`）
+- 端口通过 `$env:PORT = "5600"` 环境变量传入
+- 新服务 PID 42936，`http://127.0.0.1:5600` 返回 200 ✅
+
+---
+
+#### 215. 人工验收通过 — 移动端/平板/桌面端 detail-focus 响应式行为确认
+
+**时间**：2026-04-21
+
+**验收结果**：
+- ✅ 邮箱页面：列表/详情切换正常
+- ✅ 临时邮箱页面：消息列表/详情切换正常
+- ✅ 移动端 (≤768px)：垂直堆叠 + detail-focus 切换正常
+- ✅ 平板端 (769-1024px)：groups 折叠 + detail-focus 切换正常
+- ✅ 桌面端 (>1024px)：三栏/双栏布局正常
+
+---
+
+#### 216. 全量回归测试 — 响应式修复后全绿
+
+**时间**：2026-04-21
+
+**命令**：`python -m unittest discover -s tests -v`
+
+**结果**：
+- Ran 1243 tests in 347.924s
+- **OK (skipped=7)** ✅
+
+**结论**：Entry 213/214 的 CSS/HTML/JS 修改（纯前端响应式修复）未引入任何回归。
+
+---
+
+#### 217. 本地 git commit — 响应式修复全部提交
+
+**时间**：2026-04-21
+
+**提交信息**：
+```
+fix: 修复标准模式小窗 UI 排版错乱（Issue #50）- 响应式断点适配
+```
+
+**提交 SHA**：`b64433c`
+**分支**：`Buggithubissue`
+**文件数**：11 files changed, 1150 insertions(+), 10 deletions(-)
+
+**包含文件**：
+- `WORKSPACE.md` — Entry 210-216 操作记录
+- `docs/BUG/...` — BUG 分析文档
+- `docs/TODO/...` — TODO 任务文档
+- `static/css/main.css` — 平板+移动端响应式规则
+- `static/js/features/emails.js` — detail-focus 三段逻辑
+- `static/js/features/accounts.js` — 切换账号重置 detail focus
+- `static/js/features/temp_emails.js` — 临时邮箱 detail focus 调用
+- `static/js/main.js` — toggleGroupsColumn + 响应式 groups
+- `static/js/i18n.js` — 翻译词条
+- `templates/index.html` — 展开分组按钮 + tempEmailDetailSection 默认隐藏
+- `tests/test_responsive_detail_focus_contract.py` — 契约测试
+
+**排除**：`session/` 临时文件、`test_output.log`、`server_*.log`
+
+---
+
 ## 2026-04-19
 
 ### 操作记录

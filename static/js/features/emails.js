@@ -202,6 +202,60 @@
             return isTempEmailGroup || currentPage === 'temp-emails' ? 'temp' : 'mailbox';
         }
 
+        // detail-focus 断点阈值：低于此宽度时切换列表/详情为互斥模式
+        // 注意: CSS 平板断点为 1024px，此处 900px 为功能切换阈值而非布局断点
+        function isNarrowWorkspaceViewport() {
+            return window.innerWidth <= 900;
+        }
+
+        // 邮箱列表/详情互斥切换 — 窄视口下点击邮件时隐藏列表、全宽展示详情
+        // 被调用方: accounts.js(切换账户重置)、emails.js(点击邮件/返回列表)
+        // CSS 配套: #emailListPanel.detail-focus 规则(平板+移动端)
+        function setMailboxDetailFocus(active) {
+            const panel = document.getElementById('emailListPanel');
+            if (!panel) return;
+            const shouldFocus = Boolean(active) && isNarrowWorkspaceViewport();
+            panel.classList.toggle('detail-focus', shouldFocus);
+            // 内联样式作为 CSS 的即时保障，避免布局闪烁
+            const listEl = document.getElementById('emailList');
+            const detailEl = document.getElementById('emailDetailSection');
+            if (shouldFocus) {
+                if (listEl) listEl.style.display = 'none';
+                if (detailEl) detailEl.style.display = 'flex';
+            } else if (isNarrowWorkspaceViewport()) {
+                if (listEl) listEl.style.display = '';
+                if (detailEl) detailEl.style.display = 'none';
+            } else {
+                // 桌面端：退回 CSS 控制，清除内联覆盖
+                if (listEl) listEl.style.display = '';
+                if (detailEl) detailEl.style.display = '';
+            }
+        }
+
+        // 临时邮箱消息列表/详情互斥切换 — 与 setMailboxDetailFocus 对称设计
+        // 被调用方: temp_emails.js(点击消息/刷新列表)、emails.js(切换回邮箱列表)
+        // CSS 配套: .workspace.workspace-temp-emails.detail-focus 规则(平板+移动端)
+        function setTempDetailFocus(active) {
+            const workspace = document.querySelector('.workspace.workspace-temp-emails');
+            const messagePanel = document.getElementById('tempEmailMessagePanel');
+            const detailPanel = document.getElementById('tempEmailDetailSection');
+            if (!workspace) return;
+
+            const shouldFocus = Boolean(active) && isNarrowWorkspaceViewport();
+            workspace.classList.toggle('detail-focus', shouldFocus);
+
+            if (shouldFocus) {
+                if (messagePanel) messagePanel.style.display = 'none';
+                if (detailPanel) detailPanel.style.display = 'flex';
+            } else if (isNarrowWorkspaceViewport()) {
+                if (messagePanel) messagePanel.style.display = '';
+                if (detailPanel) detailPanel.style.display = 'none';
+            } else {
+                if (messagePanel) messagePanel.style.display = '';
+                if (detailPanel) detailPanel.style.display = '';
+            }
+        }
+
         function getEmailDetailRefs(options = {}) {
             const source = resolveEmailDetailSource(options);
             if (source === 'temp') {
@@ -247,7 +301,7 @@
                 return;
             }
             if (refs.section) {
-                refs.section.style.display = 'flex';
+                refs.section.style.display = 'none';
             }
         }
 
@@ -474,6 +528,7 @@
 
             // 显示工具栏
             setEmailDetailToolbarVisibility(true, { source: 'mailbox' });
+            setMailboxDetailFocus(true);
 
             // 加载邮件详情
             const container = refs.container;
@@ -906,12 +961,17 @@
         // 显示邮件列表（移动端）
         function showEmailList() {
             if (resolveEmailDetailSource() === 'temp') {
+                if (typeof setTempDetailFocus === 'function') {
+                    setTempDetailFocus(false);
+                }
                 currentEmailDetail = null;
                 isTrustedMode = false;
                 resetEmailDetailState({ source: 'temp' });
+                hideEmailDetailContainer({ source: 'temp' });
                 return;
             }
 
+            setMailboxDetailFocus(false);
             syncEmailListVisibility(true);
             isListVisible = true;
             var t = document.getElementById('toggleListText');

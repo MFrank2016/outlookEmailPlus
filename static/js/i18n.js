@@ -201,6 +201,8 @@
         '最近刷新': 'Recent Refreshes',
         '加载中…': 'Loading...',
         '分组': 'Groups',
+        '展开分组': 'Expand Groups',
+        '收起分组': 'Collapse Groups',
         '添加分组': 'Add Group',
         '搜索分组…': 'Search groups...',
         '选择分组': 'Select a group',

@@ -746,6 +746,52 @@
             window.addEventListener('resize', scheduleAccountPanelDensitySync, { passive: true });
         }
 
+        // 平板断点 groups 栏展开/折叠 — 方案 B: 点击 ☰ 按钮后 groups 作为浮动面板覆盖在内容上方
+        // 仅在平板断点(769-1024px)下有意义，按钮由 CSS .btn-toggle-groups 控制显隐
+        // HTML 绑定: index.html 中 #btnToggleGroups onclick="toggleGroupsColumn()"
+        function toggleGroupsColumn() {
+            const groupPanel = document.getElementById('groupPanel');
+            const btn = document.getElementById('btnToggleGroups');
+            if (!groupPanel) return;
+            const isExpanded = groupPanel.classList.toggle('groups-expanded');
+            if (isExpanded) {
+                groupPanel.style.display = 'flex';
+                groupPanel.style.position = 'absolute';
+                groupPanel.style.left = '60px';
+                groupPanel.style.top = '52px';
+                groupPanel.style.height = 'calc(100vh - 52px)';
+                groupPanel.style.width = '220px';
+                groupPanel.style.zIndex = '20';
+                groupPanel.style.boxShadow = '4px 0 24px rgba(0,0,0,0.25)';
+                groupPanel.style.borderRight = '1px solid var(--border)';
+                groupPanel.style.background = 'var(--bg-card)';
+            } else {
+                groupPanel.style.cssText = '';
+                handleResponsiveGroups();
+            }
+            if (btn) {
+                btn.title = isExpanded ? translateAppTextLocal('收起分组') : translateAppTextLocal('展开分组');
+            }
+        }
+
+        // resize 监听: 窗口尺寸变化时自动同步 groups 栏显隐状态
+        // 与 CSS @media 断点(768/1024px) 配合，但通过 JS 内联 style 确保即时生效
+        // 展开(groups-expanded)状态下不干预，避免覆盖用户操作
+        function handleResponsiveGroups() {
+            const groupPanel = document.getElementById('groupPanel');
+            if (!groupPanel) return;
+            const isExpanded = groupPanel.classList.contains('groups-expanded');
+            // 展开状态下不干预
+            if (isExpanded) return;
+            const width = window.innerWidth;
+            if (width > 768 && width <= 1024) {
+                groupPanel.style.display = 'none';
+            } else {
+                groupPanel.style.cssText = '';
+            }
+        }
+        window.addEventListener('resize', handleResponsiveGroups, { passive: true });
+
         // ==================== 邮件详情显示控制 ====================
 
         function showEmailDetailSection() {
@@ -950,6 +996,7 @@
             initColorPicker();
             initEmailListScroll();
             initResizeHandles();
+            handleResponsiveGroups();
 
             // 初始化轮询设置
             initPollingSettings();

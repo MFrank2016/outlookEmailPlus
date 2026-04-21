@@ -19,6 +19,11 @@
                 }
             });
 
+            // 窄屏下：回到列表态（避免上一次详情态残留）
+            if (typeof setMailboxDetailFocus === 'function') {
+                setMailboxDetailFocus(false);
+            }
+
             const folderTabs = document.getElementById('folderTabs');
             if (folderTabs) {
                 folderTabs.style.display = 'flex';
