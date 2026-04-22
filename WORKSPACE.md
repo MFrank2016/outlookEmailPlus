@@ -108,6 +108,38 @@
 
 ---
 
+#### 230. CI 修复与 v2.2.1 补丁发布
+
+**时间**：2026-04-22
+
+**背景**：
+用户要求检查 CICD 状态。v2.2.0 发布后，`Python Tests` 与 `Build and Push Docker Image` 均失败，需修复后重新触发推送。
+
+**失败根因分析**：
+- `Python Tests`（run `#24755887979`）失败：`tests/test_settings_dynamic_provider_names.py` 使用 `import pytest`，但 CI 环境未安装 pytest，导致 `ModuleNotFoundError`
+- `Build and Push Docker Image`（run `#24755887965` / `#24755887980`）失败：质量门禁依赖 Python Tests，测试未通过导致 Docker 构建被阻断
+
+**修复措施**：
+- 将 `tests/test_settings_dynamic_provider_names.py` 从 pytest 语法完整迁移至标准库 `unittest`：
+  - 移除 `import pytest`
+  - 用 `unittest.TestCase` + `setUp`/`tearDown` 替代 pytest fixtures
+  - 用 `self.assertRaises(ValueError)` 替代 `pytest.raises`
+  - 本地验证：`python -m unittest tests.test_settings_dynamic_provider_names -v` → 16 tests passed ✅
+
+**版本更新**：
+- `outlook_web/__init__.py`：`2.2.0` → `2.2.1`
+- `README.md` / `README.en.md` / `CHANGELOG.md` / `docs/DEVLOG.md`：追加 v2.2.1 章节
+
+**重新发布**：
+- Commit：`9075089` — `fix(ci): migrate test_settings_dynamic_provider_names from pytest to unittest`
+- Tag：`v2.2.1`（已推送至 origin）
+- GitHub Release：`https://github.com/ZeroPointSix/outlookEmailPlus/releases/tag/v2.2.1`
+  - 由 `create-github-release.yml` 自动创建
+  - 产物已上传：`outlookEmailPlus-v2.2.0-src.zip`、`browser-extension-v0.3.0.zip`
+- CI 状态：`Python Tests` 与 `Build and Push Docker Image` 已重新触发，等待执行结果
+
+---
+
 ## 2026-04-21
 
 ### 操作记录
