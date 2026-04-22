@@ -71,6 +71,43 @@
 
 ---
 
+#### 229. v2.2.0 发布（GitHub Release）
+
+**时间**：2026-04-22
+
+**背景**：
+用户要求以发布助手身份，基于距离上一次推送的新修改生成发布日志并发布到 GitHub Release。经确认本项目为 Python + Docker 项目（非 Tauri），因此将构建产物适配为 Docker 镜像 / 源码 zip / 浏览器扩展 zip。
+
+**发布前准备**：
+1. **版本号更新**：
+   - `outlook_web/__init__.py`：`2.1.1` → `2.2.0`
+   - `browser-extension/manifest.json`：`0.2.0` → `0.3.0`
+2. **文档同步**：
+   - `README.md` / `README.en.md`：当前稳定版本与版本亮点同步到 `v2.2.0`
+   - `CHANGELOG.md`：新增 `v2.2.0` 发布记录（含新增功能 / 修复 / 重要变更 / 测试验证四部分）
+   - `docs/DEVLOG.md`：新增 `v2.2.0` 发布章节
+3. **代码质量修复**：
+   - 执行 `black --line-length 127 .` 与 `isort --profile black --line-length 127 .`
+   - 16 个文件被 reformatted
+   - 复测 CI 等效 `flake8`（critical errors + complexity check）→ 0 错误 ✅
+
+**测试验证**：
+- `tests/test_version_update.py`：51 passed ✅（动态版本断言正常）
+- 此前全量回归：1,369 passed, 9 skipped, 0 failed ✅
+
+**构建与发布**：
+- Commit：`c894739` — `chore(release): prepare v2.2.0`
+- Tag：`v2.2.0`（已推送至 origin）
+- GitHub Release：`https://github.com/ZeroPointSix/outlookEmailPlus/releases/tag/v2.2.0`
+  - 由 `create-github-release.yml` 自动创建
+  - 已手动上传产物：
+    - `outlookEmailPlus-v2.2.0-src.zip`（4,593,937 bytes）
+    - `browser-extension-v0.3.0.zip`（44,713 bytes）
+- Docker 镜像：GitHub Actions `docker-build-push.yml` 已触发（tag `v2.2.0`），状态 `in_progress`
+  - 本地 Docker Desktop 未运行，因此未执行本地 `docker build`，由 CI 自动完成
+
+---
+
 ## 2026-04-21
 
 ### 操作记录
